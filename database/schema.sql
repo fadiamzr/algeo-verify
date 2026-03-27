@@ -58,7 +58,9 @@ CREATE TABLE address_verification (
     raw_address TEXT,
     normalized_address TEXT,
     confidence_score FLOAT,
-    match_details TEXT,
+    match_details JSONB,
+    detected_entities JSONB,
+    risk_flags JSONB,
     commune_id INTEGER REFERENCES commune(id),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

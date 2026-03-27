@@ -24,6 +24,7 @@ engine = create_engine(
 # ── Table creation ────────────────────────────────────────────────────
 def create_db_and_tables() -> None:
     """Create all SQLModel tables.  Safe to call multiple times."""
+    from app.models import Wilaya, Commune, AddressVerification  # noqa: F401
     SQLModel.metadata.create_all(engine)
 
 
