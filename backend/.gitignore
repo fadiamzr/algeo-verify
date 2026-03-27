@@ -1,5 +1,8 @@
+.vscode/
+mobile/**/generated_*
+mobile/**/FlutterGeneratedPluginRegistrant.*
 pycache/
 *.pyc
 .venv/
 .env
-algeo_verify.db
+.db
