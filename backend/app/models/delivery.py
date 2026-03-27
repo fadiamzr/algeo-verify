@@ -1,0 +1,23 @@
+from typing import Optional, TYPE_CHECKING
+from datetime import datetime
+from sqlmodel import SQLModel, Field, Relationship
+
+if TYPE_CHECKING:
+    from .delivery_agent import DeliveryAgent
+    from .feedback import Feedback
+
+class Delivery(SQLModel, table=True):
+    __tablename__ = "delivery"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    status: str
+    scheduled_date: datetime
+    
+    delivery_agent_id: int = Field(foreign_key="delivery_agent.id", index=True)
+
+    # Relationships
+    delivery_agent: Optional["DeliveryAgent"] = Relationship(back_populates="deliveries")
+    feedback: Optional["Feedback"] = Relationship(
+        back_populates="delivery",
+        sa_relationship_kwargs={"uselist": False}
+    )
