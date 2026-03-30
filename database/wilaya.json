@@ -346,5 +346,70 @@
         "name_fr": "El Meniaa",
         "name_ar": "المنيعة",
         "name_en": "El Meniaa"
+    },
+    {
+        "code": "59",
+        "name_fr": "Aflou",
+        "name_ar": "أفلو",
+        "name_en": "Aflou"
+    },
+    {
+        "code": "60",
+        "name_fr": "Barika",
+        "name_ar": "بريكة",
+        "name_en": "Barika"
+    },
+    {
+        "code": "61",
+        "name_fr": "Ksar Chellala",
+        "name_ar": "قصر الشلالة",
+        "name_en": "Ksar Chellala"
+    },
+    {
+        "code": "62",
+        "name_fr": "Messaad",
+        "name_ar": "مسعد",
+        "name_en": "Messaad"
+    },
+    {
+        "code": "63",
+        "name_fr": "Aïn Oussera",
+        "name_ar": "عين وسارة",
+        "name_en": "Ain Oussera"
+    },
+    {
+        "code": "64",
+        "name_fr": "Boussaâda",
+        "name_ar": "بوسعادة",
+        "name_en": "Boussaada"
+    },
+    {
+        "code": "65",
+        "name_fr": "El Abiodh Sidi Cheikh",
+        "name_ar": "الأبيض سيدي الشيخ",
+        "name_en": "El Abiodh Sidi Cheikh"
+    },
+    {
+        "code": "66",
+        "name_fr": "El Kantara",
+        "name_ar": "القنطرة",
+        "name_en": "El Kantara"
+    },
+    {
+        "code": "67",
+        "name_fr": "Bir El Ater",
+        "name_ar": "بئر العاتر",
+        "name_en": "Bir El Ater"
+    },
+    {
+        "code": "68",
+        "name_fr": "Ksar El Boukhari",
+        "name_ar": "قصر البخاري"
+    },
+    {
+        "code": "69",
+        "name_fr": "El Aricha",
+        "name_ar": "العريشة",
+        "name_en": "El Aricha"
     }
 ]

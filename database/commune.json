@@ -1294,5 +1294,71 @@
         "name_ar": "حاسي القارة",
         "postal_code": "58001",
         "wilaya_code": "58"
+    },
+    {
+        "name_fr": "Aflou",
+        "name_ar": "أفلو",
+        "postal_code": "59000",
+        "wilaya_code": "59"
+    },
+    {
+        "name_fr": "Barika",
+        "name_ar": "بريكة",
+        "postal_code": "60000",
+        "wilaya_code": "60"
+    },
+    {
+        "name_fr": "Ksar Chellala",
+        "name_ar": "قصر الشلالة",
+        "postal_code": "61000",
+        "wilaya_code": "61"
+    },
+    {
+        "name_fr": "Messaad",
+        "name_ar": "مسعد",
+        "postal_code": "62000",
+        "wilaya_code": "62"
+    },
+    {
+        "name_fr": "Aïn Oussera",
+        "name_ar": "عين وسارة",
+        "postal_code": "63000",
+        "wilaya_code": "63"
+    },
+    {
+        "name_fr": "Boussaâda",
+        "name_ar": "بوسعادة",
+        "postal_code": "64000",
+        "wilaya_code": "64"
+    },
+    {
+        "name_fr": "El Abiodh Sidi Cheikh",
+        "name_ar": "الأبيض سيدي الشيخ",
+        "postal_code": "65000",
+        "wilaya_code": "65"
+    },
+    {
+        "name_fr": "El Kantara",
+        "name_ar": "القنطرة",
+        "postal_code": "66000",
+        "wilaya_code": "66"
+    },
+    {
+        "name_fr": "Bir El Ater",
+        "name_ar": "بئر العاتر",
+        "postal_code": "67000",
+        "wilaya_code": "67"
+    },
+    {
+        "name_fr": "Ksar El Boukhari",
+        "name_ar": "قصر البخاري",
+        "postal_code": "68000",
+        "wilaya_code": "68"
+    },
+    {
+        "name_fr": "El Aricha",
+        "name_ar": "العريشة",
+        "postal_code": "69000",
+        "wilaya_code": "69"
     }
 ]
