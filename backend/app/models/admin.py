@@ -14,3 +14,8 @@ class Admin(SQLModel, table=True):
 
     # Relationships
     user: Optional["User"] = Relationship(back_populates="admin_profile")
+
+
+
+
+
