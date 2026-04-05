@@ -12,7 +12,10 @@ from sqlmodel import Session
 
 from app.config import get_settings
 from app.database import create_db_and_tables, get_session
-from app.models import *  # noqa: F401, F403  — registers all SQLModel tables
+from app.models import *  # noqa: F401, F403
+
+# ✅ إضافة auth
+from app.routers import auth
 
 # ---------------------------------------------------------------------------
 # App
@@ -24,6 +27,9 @@ app = FastAPI(
     description="Address verification API for Algerian logistics",
     version="0.1.0",
 )
+
+# ✅ ربط auth routes
+app.include_router(auth.router)
 
 # ── CORS ──────────────────────────────────────────────────────────────
 app.add_middleware(
@@ -43,7 +49,6 @@ create_db_and_tables()
 # ---------------------------------------------------------------------------
 
 class VerifyRequest(BaseModel):
-    """Body for address verification endpoints."""
     raw_address: str
 
 
@@ -61,14 +66,7 @@ def verify_address(
     body: VerifyRequest,
     db: Session = Depends(get_session),
 ):
-    """Verify a raw address through the full pipeline.
-
-    Accepts a JSON body ``{"raw_address": "..."}`` and returns the
-    verification result with confidence score, detected entities,
-    and risk flags.
-    """
     from app.services.verification import verifyAddress
-
     return verifyAddress(body.raw_address, db)
 
 
@@ -77,20 +75,13 @@ def verify_delivery_address(
     delivery_id: int,
     db: Session = Depends(get_session),
 ):
-    """Verify an address for a specific delivery.
-
-    Looks up the delivery by ID (to confirm it exists), then runs
-    the address verification pipeline on its address field.
-    """
     from app.models import Delivery
     from app.services.verification import verifyAddress
 
-    # Confirm the delivery exists
     delivery = db.get(Delivery, delivery_id)
     if not delivery:
         raise HTTPException(status_code=404, detail=f"Delivery {delivery_id} not found")
 
-    # Detect address field
     address = getattr(delivery, "address", getattr(delivery, "raw_address", None))
     if not address:
         raise HTTPException(status_code=400, detail="Delivery does not have a raw_address or address field")
@@ -98,3 +89,25 @@ def verify_delivery_address(
     result = verifyAddress(address, db)
     result["deliveryId"] = delivery_id
     return result
+
+from app.models.user import User
+from app.database import get_session
+from app.core.security import hash_password
+
+@app.on_event("startup")
+def create_test_user():
+    db = next(get_session())
+
+    existing_user = db.query(User).filter(User.email == "test@test.com").first()
+    if existing_user:
+        return
+
+    user = User(
+        name="test",
+        email="test@test.com",
+        password_hash=hash_password("test123"),
+        role="admin"
+    )
+
+    db.add(user)
+    db.commit()
