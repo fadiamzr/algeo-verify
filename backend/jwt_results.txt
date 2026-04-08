@@ -1,0 +1,173 @@
+﻿py : C:\Users\User\Desktop
+\algeo_verify\backend\test
+_jwt.py:18: 
+DeprecationWarning: dateti
+me.datetime.utcnow() is 
+deprecated and scheduled 
+for removal in a future 
+version. Use 
+timezone-aware objects to 
+represent datetimes in 
+UTC: datetime.datetime.now
+(datetime.UTC).
+Au caractère Ligne:1 : 1
++ py -X utf8 test_jwt.py 
+2>&1 | Out-File -Encoding 
+utf8 jwt_results.txt ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~
+~~~
+    + CategoryInfo        
+      : NotSpecified: (C  
+  :\Users\User\D...(dat   
+ etime.UTC).:String) [    
+], RemoteException
+    + FullyQualifiedError 
+   Id : NativeCommandErr  
+  or
+ 
+  {"sub": "1", "exp": 
+datetime.utcnow() - 
+timedelta(hours=1)},
+C:\Users\User\Desktop\alge
+o_verify\backend\test_jwt.
+py:22: 
+DeprecationWarning: dateti
+me.datetime.utcnow() is 
+deprecated and scheduled 
+for removal in a future 
+version. Use 
+timezone-aware objects to 
+represent datetimes in 
+UTC: datetime.datetime.now
+(datetime.UTC).
+  {"sub": "1", "exp": 
+datetime.utcnow() + 
+timedelta(hours=24)},
+========================================================================
+  JWT PROTECTION AUDIT
+========================================================================
+
+ÔöÇÔöÇ TEST 1: No Token (missing Authorization header) ÔöÇÔöÇ
+Method Endpoint                                      Status   OK?
+------------------------------------------------------------------------
+GET    /auth/me                                      401      ÔØî
+GET    /deliveries/                                  401      ÔØî
+POST   /deliveries/                                  401      ÔØî
+GET    /deliveries/1                                 401      ÔØî
+PATCH  /deliveries/1/status                          401      ÔØî
+POST   /deliveries/1/verify                          401      ÔØî
+POST   /deliveries/1/feedback                        401      ÔØî
+GET    /deliveries/1/history                         401      ÔØî
+GET    /api/admin/statistics                         401      ÔØî
+GET    /api/admin/monthly-trends                     401      ÔØî
+GET    /api/admin/delivery-status-distribution       401      ÔØî
+GET    /api/admin/verifications-by-wilaya            401      ÔØî
+GET    /api/admin/verifications                      401      ÔØî
+GET    /api/admin/verifications/1                    401      ÔØî
+GET    /api/admin/deliveries                         401      ÔØî
+GET    /api/admin/deliveries/1                       401      ÔØî
+GET    /api/admin/agents                             401      ÔØî
+GET    /api/admin/agents/1                           401      ÔØî
+GET    /api/admin/analytics/score-distribution       401      ÔØî
+GET    /api/admin/logs                               401      ÔØî
+GET    /api/admin/logs/requests-per-endpoint         401      ÔØî
+GET    /api/admin/logs/error-rate                    401      ÔØî
+
+Result: SOME UNPROTECTED ÔØî
+
+ÔöÇÔöÇ TEST 2: Expired Token ÔöÇÔöÇ
+Method Endpoint                                      Status   OK?
+------------------------------------------------------------------------
+GET    /auth/me                                      401      Ô£à
+GET    /deliveries/                                  401      Ô£à
+POST   /deliveries/                                  401      Ô£à
+GET    /deliveries/1                                 401      Ô£à
+PATCH  /deliveries/1/status                          401      Ô£à
+POST   /deliveries/1/verify                          401      Ô£à
+POST   /deliveries/1/feedback                        401      Ô£à
+GET    /deliveries/1/history                         401      Ô£à
+GET    /api/admin/statistics                         401      Ô£à
+GET    /api/admin/monthly-trends                     401      Ô£à
+GET    /api/admin/delivery-status-distribution       401      Ô£à
+GET    /api/admin/verifications-by-wilaya            401      Ô£à
+GET    /api/admin/verifications                      401      Ô£à
+GET    /api/admin/verifications/1                    401      Ô£à
+GET    /api/admin/deliveries                         401      Ô£à
+GET    /api/admin/deliveries/1                       401      Ô£à
+GET    /api/admin/agents                             401      Ô£à
+GET    /api/admin/agents/1                           401      Ô£à
+GET    /api/admin/analytics/score-distribution       401      Ô£à
+GET    /api/admin/logs                               401      Ô£à
+GET    /api/admin/logs/requests-per-endpoint         401      Ô£à
+GET    /api/admin/logs/error-rate                    401      Ô£à
+
+Result: ALL REJECTED Ô£à
+
+ÔöÇÔöÇ TEST 3: Invalid/Garbage Token ÔöÇÔöÇ
+Method Endpoint                                      Status   OK?
+------------------------------------------------------------------------
+GET    /auth/me                                      401      Ô£à
+GET    /deliveries/                                  401      Ô£à
+POST   /deliveries/                                  401      Ô£à
+GET    /deliveries/1                                 401      Ô£à
+PATCH  /deliveries/1/status                          401      Ô£à
+POST   /deliveries/1/verify                          401      Ô£à
+POST   /deliveries/1/feedback                        401      Ô£à
+GET    /deliveries/1/history                         401      Ô£à
+GET    /api/admin/statistics                         401      Ô£à
+GET    /api/admin/monthly-trends                     401      Ô£à
+GET    /api/admin/delivery-status-distribution       401      Ô£à
+GET    /api/admin/verifications-by-wilaya            401      Ô£à
+GET    /api/admin/verifications                      401      Ô£à
+GET    /api/admin/verifications/1                    401      Ô£à
+GET    /api/admin/deliveries                         401      Ô£à
+GET    /api/admin/deliveries/1                       401      Ô£à
+GET    /api/admin/agents                             401      Ô£à
+GET    /api/admin/agents/1                           401      Ô£à
+GET    /api/admin/analytics/score-distribution       401      Ô£à
+GET    /api/admin/logs                               401      Ô£à
+GET    /api/admin/logs/requests-per-endpoint         401      Ô£à
+GET    /api/admin/logs/error-rate                    401      Ô£à
+
+Result: ALL REJECTED Ô£à
+
+ÔöÇÔöÇ TEST 4: Valid Token (should succeed or return business errors) ÔöÇÔöÇ
+Method Endpoint                                      Status   OK?
+------------------------------------------------------------------------
+GET    /auth/me                                      200      Ô£à
+GET    /deliveries/                                  200      Ô£à
+POST   /deliveries/                                  201      Ô£à
+GET    /deliveries/1                                 200      Ô£à
+PATCH  /deliveries/1/status                          200      Ô£à
+POST   /deliveries/1/verify                          200      Ô£à
+POST   /deliveries/1/feedback                        201      Ô£à
+GET    /deliveries/1/history                         200      Ô£à
+GET    /api/admin/statistics                         200      Ô£à
+GET    /api/admin/monthly-trends                     200      Ô£à
+GET    /api/admin/delivery-status-distribution       200      Ô£à
+GET    /api/admin/verifications-by-wilaya            200      Ô£à
+GET    /api/admin/verifications                      200      Ô£à
+GET    /api/admin/verifications/1                    200      Ô£à
+GET    /api/admin/deliveries                         200      Ô£à
+GET    /api/admin/deliveries/1                       200      Ô£à
+GET    /api/admin/agents                             200      Ô£à
+GET    /api/admin/agents/1                           200      Ô£à
+GET    /api/admin/analytics/score-distribution       200      Ô£à
+GET    /api/admin/logs                               200      Ô£à
+GET    /api/admin/logs/requests-per-endpoint         200      Ô£à
+GET    /api/admin/logs/error-rate                    200      Ô£à
+
+Result: ALL AUTHENTICATED Ô£à
+
+ÔöÇÔöÇ TEST 5: Public Endpoints (should work WITHOUT token) ÔöÇÔöÇ
+Method Endpoint                                      Status   OK?
+------------------------------------------------------------------------
+GET    /                                             200      Ô£à
+POST   /verify                                       200      Ô£à
+POST   /auth/login                                   200      Ô£à
+
+Result: ALL ACCESSIBLE Ô£à
+
+========================================================================
+  AUDIT COMPLETE
+========================================================================
