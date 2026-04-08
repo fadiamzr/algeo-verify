@@ -38,10 +38,10 @@ def seed() -> None:
 
     try:
         # ── 1. Skip if already seeded ─────────────────────────────────
-        existing_user = db.exec(select(User)).first()
-        if existing_user:
-            print("Already seeded. Skipping.")
-            return
+        existing_agent = db.exec(select(DeliveryAgent)).first()
+        if existing_agent:
+         print("Already seeded. Skipping.")
+         return
 
         # ── 2. Create admin user ──────────────────────────────────────
         admin_user = User(
