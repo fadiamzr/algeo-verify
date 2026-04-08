@@ -200,6 +200,7 @@ def create_delivery(
         agent = _get_or_create_agent(user, session)
 
         delivery = Delivery(
+            address=body.address,
             status=body.status,
             scheduled_date=body.scheduled_date,
             delivery_agent_id=agent.id,

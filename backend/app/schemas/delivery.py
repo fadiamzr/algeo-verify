@@ -28,6 +28,7 @@ AllowedStatus = Literal["pending", "in_progress", "delivered", "cancelled"]
 class DeliveryCreate(BaseModel):
     """Payload for POST /deliveries/"""
 
+    address: str
     status: AllowedStatus
     scheduled_date: datetime
 
@@ -67,5 +68,14 @@ class DeliveryRead(BaseModel):
     status: str
     scheduled_date: datetime
     delivery_agent_id: int
+
+    # ── Address & geocoding fields ────────────────────────────────────
+    address: Optional[str] = None
+    normalized_address: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    confidence_score: Optional[float] = None
+    ai_preprocessed: bool = False
+    geocoding_status: Optional[str] = None
 
     model_config = {"from_attributes": True}  # Pydantic v2 ORM mode

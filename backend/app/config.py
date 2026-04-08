@@ -38,6 +38,15 @@ class Settings:
     APP_NAME: str = os.getenv("APP_NAME", "Algeo Verify")
     DEBUG: bool = os.getenv("DEBUG", "true").lower() in ("true", "1", "yes")
 
+    # ── AI (Gemini) ───────────────────────────────────────────────────
+    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
+    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+    AI_ENABLED: bool = os.getenv("AI_ENABLED", "false").lower() in ("true", "1", "yes")
+
+    # ── Google Maps ───────────────────────────────────────────────────
+    GOOGLE_MAPS_API_KEY: str = os.getenv("GOOGLE_MAPS_API_KEY", "")
+    GEOCODING_ENABLED: bool = os.getenv("GEOCODING_ENABLED", "false").lower() in ("true", "1", "yes")
+
     # ── CORS ──────────────────────────────────────────────────────────
     CORS_ORIGINS: list[str] = os.getenv(
         "CORS_ORIGINS", "http://localhost:3000,http://localhost:5173"
