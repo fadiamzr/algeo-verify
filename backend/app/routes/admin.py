@@ -1,4 +1,4 @@
-﻿from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session, select
 from typing import Optional
 
@@ -130,6 +130,117 @@ def list_deliveries(
     items = session.exec(query.offset(offset).limit(page_size)).all()
 
     return {"total": total, "page": page, "pageSize": page_size, "items": items}
+
+
+@router.get("/deliveries/map")
+def deliveries_map(
+    status: Optional[str] = Query(default=None, description="Filter by delivery status"),
+    limit: int = Query(default=200, ge=1, le=1000, description="Max results"),
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    """
+    Return all deliveries that have been geocoded (non-null lat/lng),
+    suitable for rendering on a map view.
+
+    Accepts optional `status` filter and `limit` query params.
+    """
+    query = select(Delivery).where(
+        Delivery.latitude != None,  # noqa: E711
+        Delivery.longitude != None,  # noqa: E711
+    )
+
+    if status:
+        query = query.where(Delivery.status == status)
+
+    query = query.limit(limit)
+    items = session.exec(query).all()
+
+    return [
+        {
+            "id": d.id,
+            "address": d.address,
+            "normalized_address": d.normalized_address,
+            "latitude": d.latitude,
+            "longitude": d.longitude,
+            "status": d.status,
+            "confidence_score": d.confidence_score,
+            "geocoding_status": d.geocoding_status,
+            "scheduled_date": d.scheduled_date.isoformat() if d.scheduled_date else None,
+            "agent_id": d.delivery_agent_id,
+        }
+        for d in items
+    ]
+
+
+@router.get("/deliveries/{delivery_id}/geocode")
+def re_geocode_delivery(
+    delivery_id: int,
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    """
+    Manually re-run the full pipeline (AI preprocess → normalize → detect →
+    score → geocode) for a specific delivery. Useful after manually correcting
+    an address.
+
+    Updates and returns the delivery record with the latest values.
+    """
+    d = session.get(Delivery, delivery_id)
+    if not d:
+        raise HTTPException(status_code=404, detail="Delivery not found")
+
+    if not d.address:
+        raise HTTPException(status_code=400, detail="Delivery has no address to process")
+
+    try:
+        from app.services.verification import verifyAddress
+        from app.services.geocoding import geocode_address
+        from app.config import get_settings
+        settings = get_settings()
+
+        result = verifyAddress(d.address, session)
+        d.normalized_address = result.get("normalizedAddress")
+        d.confidence_score = result.get("confidenceScore")
+        d.ai_preprocessed = result.get("aiPreprocessed", False)
+
+        if d.normalized_address:
+            entities = result.get("detectedEntities", {})
+            geo = geocode_address(
+                d.normalized_address,
+                wilaya=entities.get("wilaya"),
+                commune=entities.get("commune"),
+            )
+            d.latitude = geo.get("latitude")
+            d.longitude = geo.get("longitude")
+            d.geocoding_status = geo.get("status")
+        else:
+            d.geocoding_status = "failed"
+
+        session.add(d)
+        session.commit()
+        session.refresh(d)
+
+    except Exception as e:
+        print(f"[ERROR] POST /admin/deliveries/{delivery_id}/geocode — {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Re-geocoding pipeline failed: {e}",
+        )
+
+    return {
+        "id": d.id,
+        "address": d.address,
+        "normalized_address": d.normalized_address,
+        "latitude": d.latitude,
+        "longitude": d.longitude,
+        "status": d.status,
+        "confidence_score": d.confidence_score,
+        "geocoding_status": d.geocoding_status,
+        "ai_preprocessed": d.ai_preprocessed,
+        "scheduled_date": d.scheduled_date.isoformat() if d.scheduled_date else None,
+        "agent_id": d.delivery_agent_id,
+    }
 
 
 @router.get("/deliveries/{delivery_id}")

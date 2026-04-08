@@ -195,11 +195,15 @@ def create_delivery(
 
     The delivery_agent_id is resolved automatically from the current user —
     the caller never supplies it directly.
+
+    After persisting the record, the address verification + geocoding pipeline
+    runs in a best-effort try/except; failures never block delivery creation.
     """
     try:
         agent = _get_or_create_agent(user, session)
 
         delivery = Delivery(
+            address=body.address,
             status=body.status,
             scheduled_date=body.scheduled_date,
             delivery_agent_id=agent.id,
@@ -207,8 +211,6 @@ def create_delivery(
         session.add(delivery)
         session.commit()
         session.refresh(delivery)
-
-        return delivery
 
     except HTTPException:
         raise
@@ -219,6 +221,40 @@ def create_delivery(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create delivery",
         )
+
+    # ── Address verification + geocoding (best-effort) ────────────────────────
+    try:
+        from app.services.verification import verifyAddress
+        from app.services.geocoding import geocode_address
+        from app.config import get_settings
+        settings = get_settings()
+
+        result = verifyAddress(delivery.address, session)
+        delivery.normalized_address = result.get("normalizedAddress")
+        delivery.confidence_score = result.get("confidenceScore")
+        delivery.ai_preprocessed = result.get("aiPreprocessed", False)
+
+        # Geocode if enabled and we have a normalised address to work with
+        if settings.GEOCODING_ENABLED and delivery.normalized_address:
+            entities = result.get("detectedEntities", {})
+            geo = geocode_address(
+                delivery.normalized_address,
+                wilaya=entities.get("wilaya"),
+                commune=entities.get("commune"),
+            )
+            delivery.latitude = geo.get("latitude")
+            delivery.longitude = geo.get("longitude")
+            delivery.geocoding_status = geo.get("status")
+
+        session.add(delivery)
+        session.commit()
+        session.refresh(delivery)
+
+    except Exception as e:
+        print(f"[WARN] Address processing failed for delivery {delivery.id}: {e}")
+        # Don't fail the delivery creation — address processing is best-effort
+
+    return delivery
 
 
 # ---------------------------------------------------------------------------

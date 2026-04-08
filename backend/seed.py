@@ -145,15 +145,16 @@ def seed() -> None:
         # ── 6. Create 5 sample deliveries ─────────────────────────────
         today = datetime.now(timezone.utc)
         sample_deliveries = [
-            {"status": "pending",     "scheduled_date": today},
-            {"status": "in_progress", "scheduled_date": today - timedelta(days=1)},
-            {"status": "in_progress", "scheduled_date": today - timedelta(days=2)},
-            {"status": "delivered",   "scheduled_date": today - timedelta(days=3)},
-            {"status": "cancelled",   "scheduled_date": today - timedelta(days=4)},
+            {"status": "pending",     "scheduled_date": today,                      "address": "123 rue Didouche Mourad, Constantine 25000"},
+            {"status": "in_progress", "scheduled_date": today - timedelta(days=1),  "address": "حي 500 مسكن، باب الواد، الجزائر 16001"},
+            {"status": "in_progress", "scheduled_date": today - timedelta(days=2),  "address": "Cité 1000 logements, Bir El Djir, Oran"},
+            {"status": "delivered",   "scheduled_date": today - timedelta(days=3),  "address": "en face lycée Lotfi, hai es salam, Batna"},
+            {"status": "cancelled",   "scheduled_date": today - timedelta(days=4),  "address": "BLIDA, BOUFARIK 09001"},
         ]
 
         for d in sample_deliveries:
             delivery = Delivery(
+                address=d["address"],
                 status=d["status"],
                 scheduled_date=d["scheduled_date"],
                 delivery_agent_id=agent_profile.id,

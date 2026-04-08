@@ -22,7 +22,9 @@ from typing import Any, Dict, List
 
 from sqlmodel import Session
 
+from app.config import get_settings
 from app.models import AddressVerification, APILog
+from app.services import ai_preprocessor
 from app.services.normalization import normalize
 from app.services.detection import detectEntities
 from app.services.scoring import ScoringEngine, RiskFlag
@@ -79,7 +81,8 @@ def verifyAddress(raw_address: str, db: Session) -> Dict[str, Any]:
     """Run the full address-verification pipeline.
 
     Pipeline steps:
-        1. Normalize the raw address string.
+        0. (Optional) AI preprocess the raw address via Gemini if AI_ENABLED.
+        1. Normalize the (optionally pre-processed) address string.
         2. Detect entities (wilaya, commune, postal code, street).
         3. Compute a confidence score and generate risk flags.
         4. Persist an :class:`AddressVerification` record.
@@ -106,13 +109,31 @@ def verifyAddress(raw_address: str, db: Session) -> Dict[str, Any]:
                     "street": str | None,
                 },
                 "riskFlags": [{"label": str, "severity": str, "description": str}],
+                "aiPreprocessed": bool,
                 "createdAt": str (ISO 8601),
             }
     """
     now = datetime.now(timezone.utc)
+    settings = get_settings()
+
+    # ── Step 0: AI preprocess (optional) ──────────────────────────────
+    ai_was_used: bool = False
+    address_for_normalization = raw_address
+
+    if settings.AI_ENABLED:
+        try:
+            ai_result = ai_preprocessor.preprocess_address(raw_address)
+            if ai_result:
+                clean = ai_preprocessor.build_clean_address(ai_result)
+                if clean:
+                    address_for_normalization = clean
+                    ai_was_used = True
+                    print(f"[AI] Using AI-cleaned address: {clean!r}")
+        except Exception as e:
+            print(f"[AI] Preprocessor error (continuing without AI): {e}")
 
     # ── Step 1: Normalize ─────────────────────────────────────────────
-    normalized_address = normalize(raw_address)
+    normalized_address = normalize(address_for_normalization)
 
     # ── Step 2: Detect entities ───────────────────────────────────────
     detected = detectEntities(normalized_address)
@@ -162,6 +183,7 @@ def verifyAddress(raw_address: str, db: Session) -> Dict[str, Any]:
             "street": detected.street,
         },
         "riskFlags": _risk_flags_to_dicts(risk_flags),
+        "aiPreprocessed": ai_was_used,
         "createdAt": now.isoformat(),
     }
 
