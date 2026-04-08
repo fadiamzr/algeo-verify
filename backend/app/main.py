@@ -84,7 +84,6 @@ def verify_delivery_address(
     result["deliveryId"] = delivery_id
     return result
 
-
 @app.on_event("startup")
 def run_seed():
     import sys, os

@@ -368,3 +368,22 @@ def error_rate(
     _: User = Depends(require_admin),
 ):
     return get_error_rate(session)
+    # -----------------------------------------
+# Geographic Data — Wilayas & Communes
+# -----------------------------------------
+
+from app.models.commune import Wilaya, Commune
+
+@router.get("/wilayas")
+def list_wilayas(
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    return session.exec(select(Wilaya)).all()
+
+@router.get("/communes")
+def list_communes(
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    return session.exec(select(Commune)).all()
