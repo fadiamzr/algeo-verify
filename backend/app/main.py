@@ -84,22 +84,9 @@ def verify_delivery_address(
     result["deliveryId"] = delivery_id
     return result
 
-
-from app.models.user import User
-from app.database import get_session
-from app.core.security import hash_password
-
 @app.on_event("startup")
-def create_test_user():
-    db = next(get_session())
-    existing_user = db.query(User).filter(User.email == "test@test.com").first()
-    if existing_user:
-        return
-    user = User(
-        name="test",
-        email="test@test.com",
-        password_hash=hash_password("test123"),
-        role="admin"
-    )
-    db.add(user)
-    db.commit()
+def run_seed():
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    from seed import seed
+    seed()
