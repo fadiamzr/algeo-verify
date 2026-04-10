@@ -28,7 +28,7 @@ async def import_deliveries_csv(
         raise HTTPException(status_code=400, detail="Only CSV files are accepted")
 
     content = await file.read()
-    text = content.decode("utf-8")
+    text = content.decode("utf-8-sig", errors="ignore")
     reader = csv.DictReader(io.StringIO(text))
 
     created = 0
