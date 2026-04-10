@@ -16,6 +16,7 @@ from app.models import *  # noqa: F401, F403
 from app.routes import auth
 from app.routes import admin
 from app.routes import deliveries
+from app.routes.import_deliveries import router_import
 
 from app.middleware import APILoggingMiddleware
 
@@ -33,7 +34,7 @@ app = FastAPI(
 app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(deliveries.router)
-
+app.include_router(router_import)
 # ── CORS ────────────────────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
