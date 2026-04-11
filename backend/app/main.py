@@ -32,6 +32,7 @@ app = FastAPI(
 app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(router_import)
+app.include_router(deliveries.router)
 
 # ── CORS ────────────────────────────────────────────────────────────────────
 app.add_middleware(
@@ -41,6 +42,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+from app.middleware import APILoggingMiddleware
+app.add_middleware(APILoggingMiddleware)
 
 # ── Create tables on startup ─────────────────────────────────────────────────
 create_db_and_tables()
