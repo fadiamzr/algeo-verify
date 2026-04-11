@@ -2,7 +2,7 @@
 Algeo Verify — Geocoding Service
 ==================================
 Converts a normalised Algerian address string into GPS coordinates
-via the Google Maps Geocoding API.
+via the OpenStreetMap Nominatim API (free, no API key required).
 
 Usage::
 
@@ -19,85 +19,99 @@ from typing import Optional
 
 import httpx
 
-from app.config import get_settings
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
-_GEOCODING_URL = "https://maps.googleapis.com/maps/api/geocode/json"
+_NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 _TIMEOUT_SECONDS = 10
-
-# Map Google's location_type to our internal status string
-_LOCATION_TYPE_MAP: dict[str, str] = {
-    "ROOFTOP":           "success",
-    "RANGE_INTERPOLATED": "success",
-    "GEOMETRIC_CENTER":  "approximate",
-    "APPROXIMATE":       "approximate",
-}
+_USER_AGENT = "AlgeoVerify/1.0 (university-project)"
 
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _call_geocoding_api(address: str, api_key: str) -> Optional[dict]:
+def _call_nominatim(query: str) -> Optional[dict]:
     """
-    Make a single request to the Google Maps Geocoding API.
+    Make a single request to the Nominatim geocoding API.
 
-    Returns the first result dict from the API, or ``None`` if the request
+    Returns the first result dict, or ``None`` if the request
     failed or returned no results.
     """
     params = {
-        "address": address,
-        "key": api_key,
-        "region": "dz",
-        "components": "country:DZ",
+        "q": query,
+        "format": "json",
+        "limit": 1,
+        "countrycodes": "dz",
+        "addressdetails": 1,
+    }
+
+    headers = {
+        "User-Agent": _USER_AGENT,
     }
 
     try:
         with httpx.Client(timeout=_TIMEOUT_SECONDS) as client:
-            response = client.get(_GEOCODING_URL, params=params)
+            response = client.get(_NOMINATIM_URL, params=params, headers=headers)
             response.raise_for_status()
-            data = response.json()
+            results = response.json()
 
-        api_status = data.get("status", "")
-        results = data.get("results", [])
-
-        if api_status == "OK" and results:
+        if results and len(results) > 0:
             return results[0]
-
-        if api_status not in ("OK", "ZERO_RESULTS"):
-            print(f"[GEO] Geocoding API returned status={api_status!r} for: {address!r}")
 
         return None
 
     except httpx.HTTPStatusError as e:
-        print(f"[GEO] HTTP error geocoding {address!r}: {e.response.status_code}")
+        print(f"[GEO] HTTP error geocoding {query!r}: {e.response.status_code}")
         return None
     except httpx.RequestError as e:
-        print(f"[GEO] Network error geocoding {address!r}: {e}")
+        print(f"[GEO] Network error geocoding {query!r}: {e}")
         return None
     except Exception as e:
-        print(f"[GEO] Unexpected error geocoding {address!r}: {type(e).__name__}: {e}")
+        print(f"[GEO] Unexpected error geocoding {query!r}: {type(e).__name__}: {e}")
         return None
 
 
-def _extract_result(api_result: dict) -> dict:
-    """Extract lat, lng, formatted_address, location_type from an API result dict."""
-    location = api_result.get("geometry", {}).get("location", {})
-    location_type = api_result.get("geometry", {}).get("location_type", "")
-    formatted_address = api_result.get("formatted_address")
+def _classify_result(result: dict) -> str:
+    """
+    Map Nominatim result type/class to our internal status.
 
-    lat = location.get("lat")
-    lng = location.get("lng")
-    status = _LOCATION_TYPE_MAP.get(location_type, "approximate")
+    - Building-level or specific address -> "success"
+    - Town/city/village/suburb level -> "approximate"
+    """
+    osm_type = result.get("type", "")
+    osm_class = result.get("class", "")
+
+    if osm_type in ("house", "building", "residential", "apartments"):
+        return "success"
+    if osm_class == "building":
+        return "success"
+    if osm_type in ("street", "road", "path"):
+        return "success"
+
+    return "approximate"
+
+
+def _extract_result(result: dict) -> dict:
+    """Extract lat, lng, display_name from a Nominatim result."""
+    try:
+        lat = float(result.get("lat", 0))
+        lng = float(result.get("lon", 0))
+    except (ValueError, TypeError):
+        lat = None
+        lng = None
+
+    display_name = result.get("display_name")
+    status = _classify_result(result)
+    location_type = result.get("type")
 
     return {
         "latitude": lat,
         "longitude": lng,
-        "formatted_address": formatted_address,
-        "location_type": location_type or None,
+        "formatted_address": display_name,
+        "location_type": location_type,
         "status": status,
     }
 
@@ -112,7 +126,7 @@ def geocode_address(
     commune: Optional[str] = None,
 ) -> dict:
     """
-    Geocode *address* to GPS coordinates via the Google Maps Geocoding API.
+    Geocode *address* to GPS coordinates via the Nominatim API.
 
     If *wilaya* or *commune* are known they are appended to the query string
     for better accuracy.
@@ -120,7 +134,7 @@ def geocode_address(
     Fallback strategy:
         1. Try the full address (with wilaya/commune appended if provided).
         2. On failure, retry with just "{commune}, {wilaya}, Algeria".
-        3. If both fail → return status="failed" with null coordinates.
+        3. If both fail -> return status="failed" with null coordinates.
 
     Args:
         address:  The normalised address string to geocode.
@@ -146,42 +160,35 @@ def geocode_address(
         "status": "failed",
     }
 
-    settings = get_settings()
-    if not settings.GOOGLE_MAPS_API_KEY:
-        print("[GEO] GOOGLE_MAPS_API_KEY is not set — skipping geocoding")
-        return _FAILED
-
-    # ── Build the query string ────────────────────────────────────────────────
+    # -- Build the query string ------------------------------------------------
     query_parts = [address]
     if wilaya and wilaya.lower() not in address.lower():
         query_parts.append(wilaya)
     if commune and commune.lower() not in address.lower():
-        # prepend commune before wilaya for better specificity
         query_parts.insert(1, commune)
 
     full_query = ", ".join(query_parts)
 
-    # ── Attempt 1: full query ─────────────────────────────────────────────────
-    result = _call_geocoding_api(full_query, settings.GOOGLE_MAPS_API_KEY)
+    # -- Attempt 1: full query -------------------------------------------------
+    result = _call_nominatim(full_query)
     if result:
         extracted = _extract_result(result)
-        print(f"[GEO] Geocoded {address!r} → "
+        print(f"[GEO] Geocoded {address!r} -> "
               f"({extracted['latitude']}, {extracted['longitude']}) "
               f"[{extracted['status']}]")
         return extracted
 
-    # ── Attempt 2: commune-level fallback ─────────────────────────────────────
+    # -- Attempt 2: commune-level fallback -------------------------------------
     if commune or wilaya:
         fallback_parts = [p for p in [commune, wilaya, "Algeria"] if p]
         fallback_query = ", ".join(fallback_parts)
         print(f"[GEO] Full query failed; retrying with fallback: {fallback_query!r}")
 
-        result = _call_geocoding_api(fallback_query, settings.GOOGLE_MAPS_API_KEY)
+        result = _call_nominatim(fallback_query)
         if result:
             extracted = _extract_result(result)
-            # Downgrade to approximate since we fell back to commune level
             extracted["status"] = "approximate"
-            print(f"[GEO] Fallback geocoded → "
+            print(f"[GEO] Fallback geocoded -> "
                   f"({extracted['latitude']}, {extracted['longitude']}) [approximate]")
             return extracted
 

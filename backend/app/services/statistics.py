@@ -30,22 +30,31 @@ def get_statistics(session: Session) -> dict:
         )
     ).one()
 
+    # ── Use correct status strings matching the DB ──
     status_counts = {}
-    for status in ["pending", "inProgress", "completed", "failed"]:
+    for status in ["pending", "in_progress", "delivered", "cancelled"]:
         count = session.exec(
             select(func.count(Delivery.id)).where(Delivery.status == status)
         ).one()
         status_counts[status] = count
 
     total_agents = session.exec(select(func.count(DeliveryAgent.id))).one()
+    total_api_calls = session.exec(select(func.count(APILog.id))).one()
+
+    # Delivery success rate
+    delivered = status_counts.get("delivered", 0)
+    success_rate = round(delivered / total_deliveries, 3) if total_deliveries > 0 else 0.0
 
     return {
         "totalDeliveries": total_deliveries,
         "totalVerifications": total_verifications,
-        "averageConfidenceScore": round(avg_score, 3),
-        "highRiskAddresses": high_risk,
+        "avgConfidenceScore": round(avg_score, 3),
+        "riskyAddresses": high_risk,
         "deliveryStatusCounts": status_counts,
         "totalAgents": total_agents,
+        "totalApiCalls": total_api_calls,
+        "deliverySuccessRate": success_rate,
+        "activeAgents": total_agents,
     }
 
 
@@ -54,26 +63,33 @@ def get_statistics(session: Session) -> dict:
 # ─────────────────────────────────────────
 
 def get_monthly_trends(session: Session) -> list[dict]:
-    records = session.exec(select(VerificationRecord)).all()
+    # Use AddressVerification (which is actually populated) instead of VerificationRecord
+    verifications = session.exec(select(AddressVerification)).all()
+    deliveries = session.exec(select(Delivery)).all()
 
-    monthly: dict[str, dict] = defaultdict(lambda: {"verifications": 0, "totalScore": 0.0})
+    monthly_verif: dict[str, int] = defaultdict(int)
+    monthly_deliv: dict[str, int] = defaultdict(int)
 
-    for record in records:
-        key = record.verification_date.strftime("%Y-%m")
-        monthly[key]["verifications"] += 1
-        monthly[key]["totalScore"] += record.result_score
+    for v in verifications:
+        if v.created_at:
+            key = v.created_at.strftime("%Y-%m")
+            monthly_verif[key] += 1
 
-    trends = []
-    for month, data in sorted(monthly.items()):
-        count = data["verifications"]
-        avg = round(data["totalScore"] / count, 3) if count else 0.0
-        trends.append({
+    for d in deliveries:
+        if d.scheduled_date:
+            key = d.scheduled_date.strftime("%Y-%m")
+            monthly_deliv[key] += 1
+
+    all_months = sorted(set(list(monthly_verif.keys()) + list(monthly_deliv.keys())))
+
+    return [
+        {
             "month": month,
-            "verifications": count,
-            "averageScore": avg,
-        })
-
-    return trends
+            "verifications": monthly_verif.get(month, 0),
+            "deliveries": monthly_deliv.get(month, 0),
+        }
+        for month in all_months
+    ]
 
 
 # ─────────────────────────────────────────
@@ -81,7 +97,20 @@ def get_monthly_trends(session: Session) -> list[dict]:
 # ─────────────────────────────────────────
 
 def get_delivery_status_distribution(session: Session) -> list[dict]:
-    statuses = ["pending", "inProgress", "completed", "failed"]
+    # ── Use correct status strings matching the DB ──
+    statuses = ["pending", "in_progress", "delivered", "cancelled"]
+    colors = {
+        "pending": "#EAB308",
+        "in_progress": "#3B82F6",
+        "delivered": "#22C55E",
+        "cancelled": "#EF4444",
+    }
+    labels = {
+        "pending": "Pending",
+        "in_progress": "In Progress",
+        "delivered": "Delivered",
+        "cancelled": "Cancelled",
+    }
     total = session.exec(select(func.count(Delivery.id))).one() or 1
 
     distribution = []
@@ -90,8 +119,10 @@ def get_delivery_status_distribution(session: Session) -> list[dict]:
             select(func.count(Delivery.id)).where(Delivery.status == status)
         ).one()
         distribution.append({
+            "name": labels[status],
+            "value": count,
+            "color": colors[status],
             "status": status,
-            "count": count,
             "percentage": round((count / total) * 100, 1),
         })
 
@@ -103,14 +134,22 @@ def get_delivery_status_distribution(session: Session) -> list[dict]:
 # ─────────────────────────────────────────
 
 def get_verifications_by_wilaya(session: Session) -> list[dict]:
-    from app.models import DetectedEntities
+    """
+    Extract wilaya info from Delivery addresses using the detection engine.
+    Uses deliveries with normalized_address rather than the non-existent
+    DetectedEntities table.
+    """
+    from app.services.detection import detectEntities
 
-    results = session.exec(select(DetectedEntities)).all()
+    deliveries = session.exec(select(Delivery)).all()
 
     wilaya_counts: dict[str, int] = defaultdict(int)
-    for entity in results:
-        if entity.wilaya:
-            wilaya_counts[entity.wilaya] += 1
+    for d in deliveries:
+        addr = d.normalized_address or d.address
+        if addr:
+            entities = detectEntities(addr)
+            if entities.wilaya:
+                wilaya_counts[entities.wilaya] += 1
 
     return [
         {"wilaya": wilaya, "count": count}
@@ -173,7 +212,7 @@ def get_requests_per_endpoint(session: Session) -> list[dict]:
         endpoint_counts[log.endpoint] += 1
 
     return [
-        {"endpoint": ep, "count": count}
+        {"endpoint": ep, "requests": count}
         for ep, count in sorted(endpoint_counts.items(), key=lambda x: -x[1])
     ]
 

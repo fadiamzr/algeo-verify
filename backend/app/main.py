@@ -17,6 +17,8 @@ from app.routes import auth
 from app.routes import admin
 from app.routes import deliveries
 
+from app.middleware import APILoggingMiddleware
+
 # ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------
@@ -40,7 +42,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
+app.add_middleware(APILoggingMiddleware)
 # ── Create tables on startup ─────────────────────────────────────────────────
 create_db_and_tables()
 
