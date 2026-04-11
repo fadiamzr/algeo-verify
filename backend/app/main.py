@@ -17,7 +17,7 @@ from app.models import *  # noqa: F401, F403
 from app.routes import auth
 from app.routes import admin
 from app.routes import deliveries
-
+from app.routes.import_deliveries import router_import
 # ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------
