@@ -56,6 +56,13 @@ async def import_deliveries_csv(
                 status=status,
                 scheduled_date=scheduled_date,
                 delivery_agent_id=int(delivery_agent_id),
+                address=row.get("address", "").strip() or None,
+                normalized_address=row.get("normalized_address", "").strip() or None,
+                confidence_score=float(row["confidence_score"]) if row.get("confidence_score") else None,
+                latitude=float(row["latitude"]) if row.get("latitude") else None,
+                longitude=float(row["longitude"]) if row.get("longitude") else None,
+                ai_preprocessed=row.get("ai_preprocessed", "").lower() == "true",
+                geocoding_status=row.get("geocoding_status", "").strip() or None,
             )
             session.add(delivery)
             created += 1
