@@ -57,23 +57,44 @@ async def import_deliveries_csv(
                 scheduled_date=scheduled_date,
                 delivery_agent_id=int(delivery_agent_id),
                 address=row.get("address", "").strip() or None,
-                normalized_address=row.get("normalized_address", "").strip() or None,
-                confidence_score=float(row["confidence_score"]) if row.get("confidence_score") else None,
-                latitude=float(row["latitude"]) if row.get("latitude") else None,
-                longitude=float(row["longitude"]) if row.get("longitude") else None,
-                ai_preprocessed=row.get("ai_preprocessed", "").lower() == "true",
-                geocoding_status=row.get("geocoding_status", "").strip() or None,
             )
             session.add(delivery)
+            session.commit()
+            session.refresh(delivery)
+
+            # Run the full pipeline
+            if delivery.address:
+                try:
+                    from app.services.verification import verifyAddress
+                    from app.services.geocoding import geocode_address
+
+                    result = verifyAddress(delivery.address, session)
+                    delivery.normalized_address = result.get("normalizedAddress")
+                    delivery.confidence_score = result.get("confidenceScore")
+                    delivery.ai_preprocessed = result.get("aiPreprocessed", False)
+
+                    entities = result.get("detectedEntities", {})
+                    geo = geocode_address(
+                        delivery.normalized_address or delivery.address,
+                        wilaya=entities.get("wilaya"),
+                        commune=entities.get("commune"),
+                    )
+                    delivery.latitude = geo.get("latitude")
+                    delivery.longitude = geo.get("longitude")
+                    delivery.geocoding_status = geo.get("status")
+
+                    session.add(delivery)
+                    session.commit()
+                except Exception as e:
+                    print(f"[WARN] Pipeline failed for row {i}: {e}")
+
             created += 1
 
         except Exception as e:
             errors.append(f"Row {i}: {str(e)}")
 
-    session.commit()
-
     return {
-        "message": f"Import complete",
+        "message": "Import complete",
         "created": created,
         "errors": errors,
     }
