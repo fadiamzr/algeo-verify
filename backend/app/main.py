@@ -12,12 +12,11 @@ from app.config import get_settings
 from app.database import create_db_and_tables, get_session
 from app.models import *  # noqa: F401, F403
 
+
 # ✅ Import routes
 from app.routes import auth
 from app.routes import admin
 from app.routes import deliveries
-
-from app.middleware import APILoggingMiddleware
 
 # ---------------------------------------------------------------------------
 # App
@@ -32,7 +31,7 @@ app = FastAPI(
 # ✅ Include routers
 app.include_router(auth.router)
 app.include_router(admin.router)
-app.include_router(deliveries.router)
+app.include_router(router_import)
 
 # ── CORS ────────────────────────────────────────────────────────────────────
 app.add_middleware(
@@ -42,7 +41,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.add_middleware(APILoggingMiddleware)
+
 # ── Create tables on startup ─────────────────────────────────────────────────
 create_db_and_tables()
 
