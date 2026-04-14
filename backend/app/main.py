@@ -12,17 +12,18 @@ from app.config import get_settings
 from app.database import create_db_and_tables, get_session
 from app.models import *  # noqa: F401, F403
 
-
 # ✅ Import routes
 from app.routes import auth
 from app.routes import admin
 from app.routes import deliveries
 from app.routes.import_deliveries import router_import
 from app.routes.import_agents import router_import_agents
+
 # ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------
 _settings = get_settings()
+
 app = FastAPI(
     title=_settings.APP_NAME,
     description="Address verification API for Algerian logistics",
@@ -34,6 +35,7 @@ app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(router_import)
 app.include_router(router_import_agents)
+app.include_router(deliveries.router)
 
 # ── CORS ────────────────────────────────────────────────────────────────────
 app.add_middleware(
@@ -43,6 +45,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+from app.middleware import APILoggingMiddleware
+app.add_middleware(APILoggingMiddleware)
 
 # ── Create tables on startup ─────────────────────────────────────────────────
 create_db_and_tables()
@@ -60,7 +65,6 @@ class VerifyRequest(BaseModel):
 def root():
     return {"message": "Algeo-Verify backend is running"}
 
-
 @app.post("/verify")
 def verify_address(
     body: VerifyRequest,
@@ -69,7 +73,6 @@ def verify_address(
     from app.services.verification import verifyAddress
     return verifyAddress(body.raw_address, db)
 
-
 @app.post("/deliveries/{delivery_id}/verify")
 def verify_delivery_address(
     delivery_id: int,
@@ -77,12 +80,15 @@ def verify_delivery_address(
 ):
     from app.models import Delivery
     from app.services.verification import verifyAddress
+
     delivery = db.get(Delivery, delivery_id)
     if not delivery:
         raise HTTPException(status_code=404, detail=f"Delivery {delivery_id} not found")
+
     address = getattr(delivery, "address", getattr(delivery, "raw_address", None))
     if not address:
         raise HTTPException(status_code=400, detail="Delivery does not have a raw_address or address field")
+
     result = verifyAddress(address, db)
     result["deliveryId"] = delivery_id
     return result
