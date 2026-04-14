@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlmodel import Session, select
 
 from app.database import get_session
-from app.models import User, DeliveryAgent
+from app.models import DeliveryAgent, User
 from app.routes.auth import get_current_user
 from app.models.user import UserRole
 
@@ -43,14 +43,15 @@ async def import_agents_csv(
                 continue
 
             user_id = int(user_id_str)
+            company_id = int(company_id_str) if company_id_str else None
 
             # Check user exists
             user = session.get(User, user_id)
             if not user:
-                errors.append(f"Row {i}: user_id {user_id} does not exist")
+                errors.append(f"Row {i}: user_id {user_id} not found")
                 continue
 
-            # Check agent not already created for this user
+            # Check agent not already exists
             existing = session.exec(
                 select(DeliveryAgent).where(DeliveryAgent.user_id == user_id)
             ).first()
@@ -58,19 +59,14 @@ async def import_agents_csv(
                 errors.append(f"Row {i}: agent already exists for user_id {user_id}")
                 continue
 
-            company_id = int(company_id_str) if company_id_str else None
-
-            agent = DeliveryAgent(
-                user_id=user_id,
-                company_id=company_id,
-            )
+            agent = DeliveryAgent(user_id=user_id, company_id=company_id)
             session.add(agent)
+            session.commit()
+            session.refresh(agent)
             created += 1
 
         except Exception as e:
             errors.append(f"Row {i}: {str(e)}")
-
-    session.commit()
 
     return {
         "message": "Import complete",

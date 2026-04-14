@@ -18,6 +18,7 @@ from app.routes import auth
 from app.routes import admin
 from app.routes import deliveries
 from app.routes.import_deliveries import router_import
+from app.routes.import_agents import router_import_agents
 # ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------
@@ -32,6 +33,7 @@ app = FastAPI(
 app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(router_import)
+app.include_router(router_import_agents)
 
 # ── CORS ────────────────────────────────────────────────────────────────────
 app.add_middleware(
