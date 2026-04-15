@@ -1,9 +1,3 @@
-"""
-Algeo Verify — FastAPI Application
-====================================
-Main entry point.  Start with:
-    uvicorn app.main:app --reload
-"""
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -12,16 +6,11 @@ from app.config import get_settings
 from app.database import create_db_and_tables, get_session
 from app.models import *  # noqa: F401, F403
 
-# ✅ Import routes
 from app.routes import auth
 from app.routes import admin
 from app.routes import deliveries
 from app.routes.import_deliveries import router_import
-from app.routes.import_agents import router_import_agents
 
-# ---------------------------------------------------------------------------
-# App
-# ---------------------------------------------------------------------------
 _settings = get_settings()
 
 app = FastAPI(
@@ -30,14 +19,11 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# ✅ Include routers
 app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(router_import)
-app.include_router(router_import_agents)
 app.include_router(deliveries.router)
 
-# ── CORS ────────────────────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_settings.CORS_ORIGINS,
@@ -49,18 +35,11 @@ app.add_middleware(
 from app.middleware import APILoggingMiddleware
 app.add_middleware(APILoggingMiddleware)
 
-# ── Create tables on startup ─────────────────────────────────────────────────
 create_db_and_tables()
 
-# ---------------------------------------------------------------------------
-# Request / Response schemas
-# ---------------------------------------------------------------------------
 class VerifyRequest(BaseModel):
     raw_address: str
 
-# ---------------------------------------------------------------------------
-# Routes
-# ---------------------------------------------------------------------------
 @app.get("/")
 def root():
     return {"message": "Algeo-Verify backend is running"}

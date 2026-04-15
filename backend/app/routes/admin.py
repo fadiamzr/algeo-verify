@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+import csv
+import io
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlmodel import Session, select
 from typing import Optional
 
@@ -7,6 +9,7 @@ from app.models import (
     User, UserRole, DeliveryAgent, Admin,
     Delivery, AddressVerification, VerificationRecord, APILog
 )
+from app.models.commune import Wilaya, Commune
 from app.services.statistics import (
     get_statistics,
     get_monthly_trends,
@@ -128,8 +131,82 @@ def list_deliveries(
     total = len(session.exec(query).all())
     offset = (page - 1) * page_size
     items = session.exec(query.offset(offset).limit(page_size)).all()
-
     return {"total": total, "page": page, "pageSize": page_size, "items": items}
+
+
+@router.post("/deliveries/import")
+async def import_deliveries_csv(
+    file: UploadFile = File(...),
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    if not file.filename.endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Only CSV files are accepted")
+
+    content = await file.read()
+    text = content.decode("utf-8-sig", errors="ignore")
+    reader = csv.DictReader(io.StringIO(text))
+
+    created = 0
+    errors = []
+
+    for i, row in enumerate(reader, start=2):
+        try:
+            status = row.get("status", "pending").strip()
+            scheduled_date_str = row.get("scheduled_date", "").strip()
+            delivery_agent_id = row.get("delivery_agent_id", "").strip()
+
+            if not delivery_agent_id:
+                errors.append(f"Row {i}: missing delivery_agent_id")
+                continue
+
+            from datetime import datetime
+            if scheduled_date_str:
+                try:
+                    scheduled_date = datetime.fromisoformat(scheduled_date_str)
+                except ValueError:
+                    scheduled_date = datetime.now()
+            else:
+                scheduled_date = datetime.now()
+
+            delivery = Delivery(
+                status=status,
+                scheduled_date=scheduled_date,
+                delivery_agent_id=int(delivery_agent_id),
+                address=row.get("address", "").strip() or None,
+            )
+            session.add(delivery)
+            session.commit()
+            session.refresh(delivery)
+
+            if delivery.address:
+                try:
+                    from app.services.verification import verifyAddress
+                    from app.services.geocoding import geocode_address
+                    result = verifyAddress(delivery.address, session)
+                    delivery.normalized_address = result.get("normalizedAddress")
+                    delivery.confidence_score = result.get("confidenceScore")
+                    delivery.ai_preprocessed = result.get("aiPreprocessed", False)
+                    entities = result.get("detectedEntities", {})
+                    geo = geocode_address(
+                        delivery.normalized_address or delivery.address,
+                        wilaya=entities.get("wilaya"),
+                        commune=entities.get("commune"),
+                    )
+                    delivery.latitude = geo.get("latitude")
+                    delivery.longitude = geo.get("longitude")
+                    delivery.geocoding_status = geo.get("status")
+                    session.add(delivery)
+                    session.commit()
+                except Exception as e:
+                    print(f"[WARN] Pipeline failed for row {i}: {e}")
+
+            created += 1
+
+        except Exception as e:
+            errors.append(f"Row {i}: {str(e)}")
+
+    return {"message": "Import complete", "created": created, "errors": errors}
 
 
 @router.get("/deliveries/map")
@@ -139,23 +216,14 @@ def deliveries_map(
     session: Session = Depends(get_session),
     _: User = Depends(require_admin),
 ):
-    """
-    Return all deliveries that have been geocoded (non-null lat/lng),
-    suitable for rendering on a map view.
-
-    Accepts optional `status` filter and `limit` query params.
-    """
     query = select(Delivery).where(
         Delivery.latitude != None,  # noqa: E711
         Delivery.longitude != None,  # noqa: E711
     )
-
     if status:
         query = query.where(Delivery.status == status)
-
     query = query.limit(limit)
     items = session.exec(query).all()
-
     return [
         {
             "id": d.id,
@@ -179,31 +247,18 @@ def re_geocode_delivery(
     session: Session = Depends(get_session),
     _: User = Depends(require_admin),
 ):
-    """
-    Manually re-run the full pipeline (AI preprocess → normalize → detect →
-    score → geocode) for a specific delivery. Useful after manually correcting
-    an address.
-
-    Updates and returns the delivery record with the latest values.
-    """
     d = session.get(Delivery, delivery_id)
     if not d:
         raise HTTPException(status_code=404, detail="Delivery not found")
-
     if not d.address:
         raise HTTPException(status_code=400, detail="Delivery has no address to process")
-
     try:
         from app.services.verification import verifyAddress
         from app.services.geocoding import geocode_address
-        from app.config import get_settings
-        settings = get_settings()
-
         result = verifyAddress(d.address, session)
         d.normalized_address = result.get("normalizedAddress")
         d.confidence_score = result.get("confidenceScore")
         d.ai_preprocessed = result.get("aiPreprocessed", False)
-
         if d.normalized_address:
             entities = result.get("detectedEntities", {})
             geo = geocode_address(
@@ -216,27 +271,15 @@ def re_geocode_delivery(
             d.geocoding_status = geo.get("status")
         else:
             d.geocoding_status = "failed"
-
         session.add(d)
         session.commit()
         session.refresh(d)
-
     except Exception as e:
-        print(f"[ERROR] POST /admin/deliveries/{delivery_id}/geocode — {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Re-geocoding pipeline failed: {e}",
-        )
-
+        raise HTTPException(status_code=500, detail=f"Re-geocoding pipeline failed: {e}")
     return {
-        "id": d.id,
-        "address": d.address,
-        "normalized_address": d.normalized_address,
-        "latitude": d.latitude,
-        "longitude": d.longitude,
-        "status": d.status,
-        "confidence_score": d.confidence_score,
-        "geocoding_status": d.geocoding_status,
+        "id": d.id, "address": d.address, "normalized_address": d.normalized_address,
+        "latitude": d.latitude, "longitude": d.longitude, "status": d.status,
+        "confidence_score": d.confidence_score, "geocoding_status": d.geocoding_status,
         "ai_preprocessed": d.ai_preprocessed,
         "scheduled_date": d.scheduled_date.isoformat() if d.scheduled_date else None,
         "agent_id": d.delivery_agent_id,
@@ -256,7 +299,7 @@ def get_delivery(
 
 
 # -----------------------------------------
-# Agents CRUD
+# Agents CRUD + Import
 # -----------------------------------------
 
 @router.get("/agents")
@@ -264,20 +307,59 @@ def list_agents(
     session: Session = Depends(get_session),
     _: User = Depends(require_admin),
 ):
-    agents = session.exec(select(DeliveryAgent)).all()
-    return agents
+    return session.exec(select(DeliveryAgent)).all()
 
 
-@router.get("/agents/{agent_id}")
-def get_agent(
-    agent_id: int,
+@router.post("/agents/import")
+async def import_agents_csv(
+    file: UploadFile = File(...),
     session: Session = Depends(get_session),
     _: User = Depends(require_admin),
 ):
-    agent = session.get(DeliveryAgent, agent_id)
-    if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
-    return agent
+    if not file.filename.endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Only CSV files are accepted")
+
+    content = await file.read()
+    text = content.decode("utf-8-sig", errors="ignore")
+    reader = csv.DictReader(io.StringIO(text))
+
+    created = 0
+    errors = []
+
+    for i, row in enumerate(reader, start=2):
+        try:
+            user_id_str = row.get("user_id", "").strip()
+            company_id_str = row.get("company_id", "").strip()
+
+            if not user_id_str:
+                errors.append(f"Row {i}: missing user_id")
+                continue
+
+            user_id = int(user_id_str)
+            company_id = int(company_id_str) if company_id_str else None
+
+            user = session.get(User, user_id)
+            if not user:
+                errors.append(f"Row {i}: user_id {user_id} not found")
+                continue
+
+            existing = session.exec(
+                select(DeliveryAgent).where(DeliveryAgent.user_id == user_id)
+            ).first()
+            if existing:
+                errors.append(f"Row {i}: agent already exists for user_id {user_id}")
+                continue
+
+            agent = DeliveryAgent(user_id=user_id, company_id=company_id)
+            session.add(agent)
+            session.commit()
+            session.refresh(agent)
+            created += 1
+
+        except Exception as e:
+            errors.append(f"Row {i}: {str(e)}")
+
+    return {"message": "Import complete", "created": created, "errors": errors}
 
 
 @router.post("/agents")
@@ -298,6 +380,18 @@ def create_agent(
     session.add(agent)
     session.commit()
     session.refresh(agent)
+    return agent
+
+
+@router.get("/agents/{agent_id}")
+def get_agent(
+    agent_id: int,
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    agent = session.get(DeliveryAgent, agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
     return agent
 
 
@@ -368,11 +462,11 @@ def error_rate(
     _: User = Depends(require_admin),
 ):
     return get_error_rate(session)
-    # -----------------------------------------
+
+
+# -----------------------------------------
 # Geographic Data — Wilayas & Communes
 # -----------------------------------------
-
-from app.models.commune import Wilaya, Commune
 
 @router.get("/wilayas")
 def list_wilayas(
@@ -380,6 +474,7 @@ def list_wilayas(
     _: User = Depends(require_admin),
 ):
     return session.exec(select(Wilaya)).all()
+
 
 @router.get("/communes")
 def list_communes(
