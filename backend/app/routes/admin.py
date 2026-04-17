@@ -3,6 +3,7 @@ import io
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlmodel import Session, select
 from typing import Optional
+from pydantic import BaseModel
 
 from app.database import get_session
 from app.models import (
@@ -307,8 +308,18 @@ def list_agents(
     session: Session = Depends(get_session),
     _: User = Depends(require_admin),
 ):
-    return session.exec(select(DeliveryAgent)).all()
-
+    agents = session.exec(select(DeliveryAgent)).all()
+    result = []
+    for agent in agents:
+        user = session.get(User, agent.user_id)
+        result.append({
+            "id": agent.id,
+            "user_id": agent.user_id,
+            "company_id": agent.company_id,
+            "name": user.name if user else "—",
+            "email": user.email if user else "—",
+        })
+    return result
 
 @router.post("/agents/import")
 async def import_agents_csv(
@@ -361,6 +372,45 @@ async def import_agents_csv(
 
     return {"message": "Import complete", "created": created, "errors": errors}
 
+import secrets
+import string
+
+class AgentRegisterRequest(BaseModel):
+    name: str
+    email: str
+
+@router.post("/agents/register")
+def register_agent(
+    body: AgentRegisterRequest,
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    from app.core.security import hash_password
+    existing = session.exec(select(User).where(User.email == body.email)).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    generated_password = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(10))
+    user = User(
+        name=body.name,
+        email=body.email,
+        password_hash=hash_password(generated_password),
+        role=UserRole.delivery_agent,
+    )
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    agent = DeliveryAgent(user_id=user.id)
+    session.add(agent)
+    session.commit()
+    session.refresh(agent)
+    return {
+        "id": agent.id,
+        "user_id": user.id,
+        "name": user.name,
+        "email": user.email,
+        "company_id": agent.company_id,
+        "generated_password": generated_password,
+    }
 
 @router.post("/agents")
 def create_agent(
@@ -382,7 +432,37 @@ def create_agent(
     session.refresh(agent)
     return agent
 
+from pydantic import BaseModel
 
+class AgentRegisterRequest(BaseModel):
+    name: str
+    email: str
+    password: str
+
+@router.post("/agents/register")
+def register_agent(
+    body: AgentRegisterRequest,
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    from app.core.security import hash_password
+    existing = session.exec(select(User).where(User.email == body.email)).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    user = User(
+        name=body.name,
+        email=body.email,
+        password_hash=hash_password(body.password),
+        role=UserRole.delivery_agent,
+    )
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    agent = DeliveryAgent(user_id=user.id)
+    session.add(agent)
+    session.commit()
+    session.refresh(agent)
+    return {"id": agent.id, "user_id": user.id, "name": user.name, "email": user.email, "company_id": agent.company_id}
 @router.get("/agents/{agent_id}")
 def get_agent(
     agent_id: int,
