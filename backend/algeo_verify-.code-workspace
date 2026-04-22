@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		},
+		{
+			"path": "../../agent app"
+		},
+		{
+			"path": "../../web dashboard admin"
+		}
+	],
+	"settings": {}
+}
