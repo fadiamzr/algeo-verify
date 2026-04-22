@@ -72,9 +72,9 @@ def verify_delivery_address(
     result["deliveryId"] = delivery_id
     return result
 
-@app.on_event("startup")
-def run_seed():
-    import sys, os
-    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-    from seed import seed
-    seed()
+# @app.on_event("startup")
+# def run_seed():
+#     import sys, os
+#     sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+#     from seed import seed
+#     seed()
