@@ -502,10 +502,29 @@ def delete_agent(
     agent = session.get(DeliveryAgent, agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
+    
+    # Delete associated deliveries first
+    deliveries = session.exec(
+        select(Delivery).where(Delivery.delivery_agent_id == agent_id)
+    ).all()
+    for delivery in deliveries:
+        session.delete(delivery)
+    
     session.delete(agent)
     session.commit()
     return {"message": "Agent deleted"}
 
+# -----------------------------------------
+# Users
+# -----------------------------------------
+
+@router.get("/users")
+def list_users(
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    users = session.exec(select(User)).all()
+    return [{"id": u.id, "email": u.email, "full_name": getattr(u, "full_name", None)} for u in users]
 
 # -----------------------------------------
 # Analytics
