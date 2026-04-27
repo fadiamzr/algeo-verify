@@ -37,7 +37,10 @@ from app.schemas.delivery import (
     ALLOWED_STATUSES,
     DeliveryCreate,
     DeliveryRead,
+    DeliveryUpdate,
     DeliveryUpdateStatus,
+    DeliveryVerificationUpdate,
+    VerificationRead,
 )
 
 # ---------------------------------------------------------------------------
@@ -167,7 +170,33 @@ def get_deliveries(
         query = query.offset(offset).limit(limit)
 
         deliveries = session.exec(query).all()
-        return deliveries
+
+        results = []
+        for d in deliveries:
+            d_dict = d.model_dump()
+            d_dict["risk_flags_count"] = 0
+            
+            if d.address:
+                verification_flags = session.exec(
+                    select(AddressVerification.risk_flags)
+                    .where(AddressVerification.raw_address == d.address)
+                    .order_by(AddressVerification.created_at.desc())
+                ).first()
+                
+                if verification_flags:
+                    flags = verification_flags
+                    if isinstance(flags, str):
+                        import json
+                        try:
+                            flags = json.loads(flags)
+                        except Exception:
+                            pass
+                    if isinstance(flags, list):
+                        d_dict["risk_flags_count"] = len(flags)
+            
+            results.append(d_dict)
+
+        return results
 
     except HTTPException:
         raise
@@ -207,6 +236,8 @@ def create_delivery(
             status=body.status,
             scheduled_date=body.scheduled_date,
             delivery_agent_id=agent.id,
+            customer_name=body.customer_name,
+            customer_phone=body.customer_phone,
         )
         session.add(delivery)
         session.commit()
@@ -223,28 +254,24 @@ def create_delivery(
         )
 
     # ── Address verification + geocoding (best-effort) ────────────────────────
+    # verifyAddress already calls geocoding internally when GEOCODING_ENABLED=true,
+    # so we read lat/lng from its result rather than calling geocode_address twice.
     try:
         from app.services.verification import verifyAddress
-        from app.services.geocoding import geocode_address
-        from app.config import get_settings
-        settings = get_settings()
 
         result = verifyAddress(delivery.address, session)
         delivery.normalized_address = result.get("normalizedAddress")
         delivery.confidence_score = result.get("confidenceScore")
         delivery.ai_preprocessed = result.get("aiPreprocessed", False)
+        delivery.latitude = result.get("latitude")
+        delivery.longitude = result.get("longitude")
 
-        # Geocode if enabled and we have a normalised address to work with
-        if settings.GEOCODING_ENABLED and delivery.normalized_address:
-            entities = result.get("detectedEntities", {})
-            geo = geocode_address(
-                delivery.normalized_address,
-                wilaya=entities.get("wilaya"),
-                commune=entities.get("commune"),
-            )
-            delivery.latitude = geo.get("latitude")
-            delivery.longitude = geo.get("longitude")
-            delivery.geocoding_status = geo.get("status")
+        lat = delivery.latitude
+        lng = delivery.longitude
+        if lat is not None and lng is not None:
+            delivery.geocoding_status = "success"
+        elif delivery.latitude is None and delivery.longitude is None:
+            delivery.geocoding_status = "failed"
 
         session.add(delivery)
         session.commit()
@@ -270,7 +297,91 @@ def get_delivery(
     """Return a single delivery owned by the authenticated agent."""
     try:
         agent = _get_or_create_agent(user, session)
-        return _get_delivery_or_404(delivery_id, agent, session)
+        delivery = _get_delivery_or_404(delivery_id, agent, session)
+
+        # ── Fetch related AddressVerification ────────────────────────────────────
+        raw_address = getattr(delivery, "address", None) or getattr(delivery, "raw_address", None)
+        
+        if raw_address:
+            verification = session.exec(
+                select(AddressVerification)
+                .where(AddressVerification.raw_address == raw_address)
+                .order_by(AddressVerification.created_at.desc())
+            ).first()
+        else:
+            verification = None
+
+        def parse_json_safely(val):
+            import json
+            if isinstance(val, str):
+                try:
+                    return json.loads(val)
+                except Exception:
+                    return None
+            return val
+
+        delivery_dict = delivery.model_dump()
+        delivery_dict["raw_address"] = raw_address
+        delivery_dict["match_details"] = None
+        delivery_dict["detected_entities"] = None
+        delivery_dict["risk_flags"] = None
+
+        if verification:
+            delivery_dict["raw_address"] = verification.raw_address
+            delivery_dict["match_details"] = verification.match_details
+            delivery_dict["detected_entities"] = parse_json_safely(verification.detected_entities)
+            delivery_dict["risk_flags"] = parse_json_safely(verification.risk_flags)
+            
+            if delivery_dict.get("latitude") is None:
+                delivery_dict["latitude"] = verification.latitude
+            if delivery_dict.get("longitude") is None:
+                delivery_dict["longitude"] = verification.longitude
+            if delivery_dict.get("confidence_score") is None:
+                delivery_dict["confidence_score"] = verification.confidence_score
+
+        # ── On-demand geocoding: fill null coords for existing deliveries ────────
+        if (
+            delivery_dict.get("latitude") is None
+            and delivery_dict.get("longitude") is None
+            and raw_address
+        ):
+            try:
+                from app.services.geocoding import geocode_address
+                from app.config import get_settings
+                import json as _json
+
+                settings = get_settings()
+                if settings.GEOCODING_ENABLED:
+                    # Extract wilaya/commune from detected_entities if available
+                    entities = delivery_dict.get("detected_entities") or {}
+                    address_to_geocode = (
+                        delivery_dict.get("normalized_address")
+                        or raw_address
+                    )
+                    geo = geocode_address(
+                        address_to_geocode,
+                        wilaya=entities.get("wilaya"),
+                        commune=entities.get("commune"),
+                    )
+                    lat = geo.get("latitude")
+                    lng = geo.get("longitude")
+                    geo_status = geo.get("status", "failed")
+
+                    # Cache results in the Delivery row so we don't call again
+                    delivery.latitude = lat
+                    delivery.longitude = lng
+                    delivery.geocoding_status = geo_status
+                    session.add(delivery)
+                    session.commit()
+
+                    delivery_dict["latitude"] = lat
+                    delivery_dict["longitude"] = lng
+                    delivery_dict["geocoding_status"] = geo_status
+            except Exception as geo_exc:
+                print(f"[WARN] On-demand geocoding failed for delivery {delivery_id}: {geo_exc}")
+                delivery_dict["geocoding_status"] = "failed"
+
+        return delivery_dict
 
     except HTTPException:
         raise
@@ -280,6 +391,45 @@ def get_delivery(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch delivery",
+        )
+
+
+# ---------------------------------------------------------------------------
+# C.2)  PATCH /deliveries/{id}  — update delivery details
+# ---------------------------------------------------------------------------
+
+@router.patch("/{delivery_id}", response_model=DeliveryRead)
+def update_delivery(
+    delivery_id: int,
+    body: DeliveryUpdate,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """
+    Update partial fields of a delivery owned by the authenticated agent.
+    """
+    try:
+        agent = _get_or_create_agent(user, session)
+        delivery = _get_delivery_or_404(delivery_id, agent, session)
+
+        update_data = body.model_dump(exclude_unset=True)
+        for key, value in update_data.items():
+            setattr(delivery, key, value)
+
+        session.add(delivery)
+        session.commit()
+        session.refresh(delivery)
+
+        return delivery
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        print(f"[ERROR] PATCH /deliveries/{delivery_id} — {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update delivery",
         )
 
 
@@ -322,19 +472,61 @@ def update_delivery_status(
 
 
 # ---------------------------------------------------------------------------
-# E)  POST /deliveries/{id}/verify  — address verification
+# E)  PATCH /deliveries/{id}/verification  — update verification results
 # ---------------------------------------------------------------------------
 
-@router.post("/{delivery_id}/verify", response_model=VerifyResponse)
+@router.patch("/{delivery_id}/verification", response_model=DeliveryRead)
+def update_delivery_verification(
+    delivery_id: int,
+    body: DeliveryVerificationUpdate,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """
+    Manually update a delivery's verification/geocoding data.
+    """
+    try:
+        agent = _get_or_create_agent(user, session)
+        delivery = _get_delivery_or_404(delivery_id, agent, session)
+
+        if body.confidence_score is not None:
+            delivery.confidence_score = body.confidence_score
+        if body.normalized_address is not None:
+            delivery.normalized_address = body.normalized_address
+        if body.latitude is not None:
+            delivery.latitude = body.latitude
+        if body.longitude is not None:
+            delivery.longitude = body.longitude
+
+        session.add(delivery)
+        session.commit()
+        session.refresh(delivery)
+
+        return delivery
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] PATCH /deliveries/{delivery_id}/verification — {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update delivery verification",
+        )
+
+
+# ---------------------------------------------------------------------------
+# F)  POST /deliveries/{id}/verify  — trigger address verification
+# ---------------------------------------------------------------------------
+
+@router.post("/{delivery_id}/verify", response_model=VerificationRead)
 def verify_delivery(
     delivery_id: int,
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
     """
-    Run the address-verification pipeline on an owned delivery.
-    The real verifyAddress() service is called; Delivery.address/raw_address
-    is used when available, otherwise a placeholder is passed.
+    Run the real address-verification pipeline on an owned delivery.
+    Updates the delivery record with the results and returns the verification object.
     """
     try:
         agent = _get_or_create_agent(user, session)
@@ -348,14 +540,26 @@ def verify_delivery(
 
         from app.services.verification import verifyAddress
 
+        # 1. Run pipeline
         result = verifyAddress(raw_address, session)
-        confidence: float = result.get("confidenceScore", 0.0)
 
-        return VerifyResponse(
-            confidenceScore=confidence,
-            risk=_score_to_risk(confidence),
-            normalizedAddress=result.get("normalizedAddress", raw_address),
-        )
+        # 2. Sync results back to the Delivery object for convenience
+        delivery.normalized_address = result.get("normalizedAddress")
+        delivery.confidence_score = result.get("confidenceScore")
+        delivery.latitude = result.get("latitude")
+        delivery.longitude = result.get("longitude")
+
+        # 3. Set geocoding_status based on whether coordinates were obtained
+        if delivery.latitude is not None and delivery.longitude is not None:
+            delivery.geocoding_status = "success"
+        else:
+            delivery.geocoding_status = "failed"
+
+        session.add(delivery)
+        session.commit()
+        session.refresh(delivery)
+
+        return result
 
     except HTTPException:
         raise
@@ -411,6 +615,21 @@ def submit_feedback(
             session.add(feedback)
             session.commit()
             session.refresh(feedback)
+
+        # Update delivery status based on feedback outcome
+        old_status = delivery.status
+        if feedback.outcome == "delivered":
+            delivery.status = "delivered"
+        elif feedback.outcome == "failed":
+            delivery.status = "cancelled"
+        elif feedback.outcome == "absent":
+            delivery.status = "pending"
+
+        session.add(delivery)
+        session.commit()
+        session.refresh(delivery)
+
+        print(f"[INFO] Feedback outcome: {feedback.outcome} | Delivery {delivery.id} status updated: {old_status} -> {delivery.status}")
 
         return FeedbackResponse(
             id=feedback.id,

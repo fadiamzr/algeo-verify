@@ -8,7 +8,9 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
-from app.database import get_session
+from sqlmodel import Session
+from app.database import engine
+
 from app.models.api_log import APILog
 
 
@@ -23,15 +25,16 @@ class APILoggingMiddleware(BaseHTTPMiddleware):
 
         # Log after response
         try:
-            db = next(get_session())
-            log = APILog(
-                endpoint=request.url.path,
-                method=request.method,
-                request_time=datetime.now(timezone.utc),
-                status_code=response.status_code,
-            )
-            db.add(log)
-            db.commit()
+            with Session(engine) as db:
+                log = APILog(
+                    endpoint=request.url.path,
+                    method=request.method,
+                    request_time=datetime.now(timezone.utc),
+                    status_code=response.status_code,
+                )
+                db.add(log)
+                db.commit()
+
         except Exception as e:
             print(f"[LOG] Failed to log request: {e}")
 

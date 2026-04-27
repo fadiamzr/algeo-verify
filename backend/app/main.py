@@ -6,9 +6,7 @@ from app.config import get_settings
 from app.database import create_db_and_tables, get_session
 from app.models import *  # noqa: F401, F403
 
-from app.routes import auth
-from app.routes import admin
-from app.routes import deliveries
+from app.routes import auth, admin, deliveries, verification, sync
 from app.routes.import_deliveries import router_import
 
 _settings = get_settings()
@@ -23,54 +21,27 @@ app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(router_import)
 app.include_router(deliveries.router)
+app.include_router(verification.router)
+app.include_router(sync.router)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_settings.CORS_ORIGINS,
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:[0-9]+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 from app.middleware import APILoggingMiddleware
 app.add_middleware(APILoggingMiddleware)
 
 create_db_and_tables()
 
-class VerifyRequest(BaseModel):
-    raw_address: str
-
 @app.get("/")
 def root():
     return {"message": "Algeo-Verify backend is running"}
-
-@app.post("/verify")
-def verify_address(
-    body: VerifyRequest,
-    db: Session = Depends(get_session),
-):
-    from app.services.verification import verifyAddress
-    return verifyAddress(body.raw_address, db)
-
-@app.post("/deliveries/{delivery_id}/verify")
-def verify_delivery_address(
-    delivery_id: int,
-    db: Session = Depends(get_session),
-):
-    from app.models import Delivery
-    from app.services.verification import verifyAddress
-
-    delivery = db.get(Delivery, delivery_id)
-    if not delivery:
-        raise HTTPException(status_code=404, detail=f"Delivery {delivery_id} not found")
-
-    address = getattr(delivery, "address", getattr(delivery, "raw_address", None))
-    if not address:
-        raise HTTPException(status_code=400, detail="Delivery does not have a raw_address or address field")
-
-    result = verifyAddress(address, db)
-    result["deliveryId"] = delivery_id
-    return result
 
 @app.on_event("startup")
 def run_seed():

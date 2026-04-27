@@ -9,7 +9,7 @@ between API contract and DB layer.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Literal, Optional, Dict, List, Any
 
 from pydantic import BaseModel, field_validator
 
@@ -31,6 +31,8 @@ class DeliveryCreate(BaseModel):
     address: str
     status: AllowedStatus
     scheduled_date: datetime
+    customer_name: Optional[str] = None
+    customer_phone: Optional[str] = None
 
     @field_validator("status")
     @classmethod
@@ -57,6 +59,22 @@ class DeliveryUpdateStatus(BaseModel):
         return v
 
 
+class DeliveryUpdate(BaseModel):
+    """Payload for PATCH /deliveries/{id}"""
+
+    customer_name: Optional[str] = None
+    customer_phone: Optional[str] = None
+
+
+class DeliveryVerificationUpdate(BaseModel):
+    """Payload for PATCH /deliveries/{id}/verification"""
+
+    confidence_score: Optional[float] = None
+    normalized_address: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+
+
 # ---------------------------------------------------------------------------
 # Response schema
 # ---------------------------------------------------------------------------
@@ -68,6 +86,8 @@ class DeliveryRead(BaseModel):
     status: str
     scheduled_date: datetime
     delivery_agent_id: int
+    customer_name: Optional[str] = None
+    customer_phone: Optional[str] = None
 
     # ── Address & geocoding fields ────────────────────────────────────
     address: Optional[str] = None
@@ -78,4 +98,28 @@ class DeliveryRead(BaseModel):
     ai_preprocessed: bool = False
     geocoding_status: Optional[str] = None
 
+    risk_flags_count: int = 0
+    
+    raw_address: Optional[str] = None
+    match_details: Optional[str] = None
+    detected_entities: Optional[Dict[str, Any]] = None
+    risk_flags: Optional[List[Dict[str, Any]]] = None
+
     model_config = {"from_attributes": True}  # Pydantic v2 ORM mode
+
+
+class VerificationRead(BaseModel):
+    """Structured verification object matching Flutter expectations."""
+
+    id: Optional[int] = None
+    rawAddress: str
+    normalizedAddress: str
+    confidenceScore: float
+    matchDetails: Optional[str] = None
+    detectedEntities: Optional[Dict[str, Any]] = None
+    riskFlags: Optional[List[Dict[str, Any]]] = None
+    createdAt: str
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+
+    model_config = {"from_attributes": True}

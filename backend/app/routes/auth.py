@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlmodel import Session, select
+from pydantic import BaseModel
 from jose import jwt, JWTError
+
 
 from app.database import get_session
 from app.models.user import User
@@ -11,12 +13,18 @@ router = APIRouter()
 security = HTTPBearer()
 
 
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
 # 🔑 LOGIN
 @router.post("/auth/login")
-def login(email: str, password: str, session: Session = Depends(get_session)):
-    user = session.exec(select(User).where(User.email == email)).first()
-    print(user)
-    if not user or not verify_password(password, user.password_hash):
+def login(login_data: LoginRequest, session: Session = Depends(get_session)):
+    user = session.exec(select(User).where(User.email == login_data.email)).first()
+    print(f"Login attempt for: {login_data.email}")
+    if not user or not verify_password(login_data.password, user.password_hash):
+
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     token = create_access_token({"sub": str(user.id)})
