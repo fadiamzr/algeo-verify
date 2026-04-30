@@ -145,12 +145,17 @@ def seed() -> None:
         # ── 6. Create 5 sample deliveries ─────────────────────────────
         today = datetime.now(timezone.utc)
         sample_deliveries = [
-            {"status": "pending",     "scheduled_date": today,                      "address": "123 rue Didouche Mourad, Constantine 25000"},
-            {"status": "in_progress", "scheduled_date": today - timedelta(days=1),  "address": "حي 500 مسكن، باب الواد، الجزائر 16001"},
-            {"status": "in_progress", "scheduled_date": today - timedelta(days=2),  "address": "Cité 1000 logements, Bir El Djir, Oran"},
-            {"status": "delivered",   "scheduled_date": today - timedelta(days=3),  "address": "en face lycée Lotfi, hai es salam, Batna"},
-            {"status": "cancelled",   "scheduled_date": today - timedelta(days=4),  "address": "BLIDA, BOUFARIK 09001"},
+            {"status": "pending",     "scheduled_date": today,                      "address": "123 rue Didouche Mourad, Constantine 25000", "customer_name": "Karim Bouzid", "customer_phone": "0555123456"},
+            {"status": "in_progress", "scheduled_date": today - timedelta(days=1),  "address": "حي 500 مسكن، باب الواد، الجزائر 16001", "customer_name": "Amina Mansouri", "customer_phone": "0666987654"},
+            {"status": "in_progress", "scheduled_date": today - timedelta(days=2),  "address": "Cité 1000 logements, Bir El Djir, Oran", "customer_name": "Youssef Taleb", "customer_phone": "0777112233"},
+            {"status": "delivered",   "scheduled_date": today - timedelta(days=3),  "address": "en face lycée Lotfi, hai es salam, Batna", "customer_name": "Nadia Khelifi", "customer_phone": "0550445566"},
+            {"status": "cancelled",   "scheduled_date": today - timedelta(days=4),  "address": "BLIDA, BOUFARIK 09001", "customer_name": "Samir Benali", "customer_phone": "0661223344"},
         ]
+
+        from app.services.verification import verifyAddress
+        from app.services.geocoding import geocode_address
+        from app.config import get_settings
+        settings = get_settings()
 
         for d in sample_deliveries:
             delivery = Delivery(
@@ -158,10 +163,39 @@ def seed() -> None:
                 status=d["status"],
                 scheduled_date=d["scheduled_date"],
                 delivery_agent_id=agent_profile.id,
+                customer_name=d["customer_name"],
+                customer_phone=d["customer_phone"]
             )
             db.add(delivery)
             db.commit()
             db.refresh(delivery)
+
+            # ── Run verification + geocoding pipeline ─────────────────
+            try:
+                result = verifyAddress(delivery.address, db)
+                delivery.normalized_address = result.get("normalizedAddress")
+                delivery.confidence_score = result.get("confidenceScore")
+                delivery.ai_preprocessed = result.get("aiPreprocessed", False)
+
+                if settings.GEOCODING_ENABLED and delivery.normalized_address:
+                    entities = result.get("detectedEntities", {})
+                    geo = geocode_address(
+                        delivery.normalized_address,
+                        wilaya=entities.get("wilaya"),
+                        commune=entities.get("commune"),
+                    )
+                    delivery.latitude = geo.get("latitude")
+                    delivery.longitude = geo.get("longitude")
+                    delivery.geocoding_status = geo.get("status")
+
+                db.add(delivery)
+                db.commit()
+                db.refresh(delivery)
+                print(f"    ✔ Delivery {delivery.id}: geocoded → "
+                      f"({delivery.latitude}, {delivery.longitude}) "
+                      f"[{delivery.geocoding_status}]")
+            except Exception as e:
+                print(f"    ⚠ Delivery {delivery.id}: geocoding failed — {e}")
 
         # ── 7. Summary ────────────────────────────────────────────────
         print()

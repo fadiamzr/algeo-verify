@@ -31,6 +31,8 @@ class DeliveryCreate(BaseModel):
     address: str
     status: AllowedStatus
     scheduled_date: datetime
+    customer_name: Optional[str] = None
+    customer_phone: Optional[str] = None
 
     @field_validator("status")
     @classmethod
@@ -68,6 +70,10 @@ class DeliveryRead(BaseModel):
     status: str
     scheduled_date: datetime
     delivery_agent_id: int
+
+    # ── Customer info ─────────────────────────────────────────────────
+    customer_name: Optional[str] = None
+    customer_phone: Optional[str] = None
 
     # ── Address & geocoding fields ────────────────────────────────────
     address: Optional[str] = None

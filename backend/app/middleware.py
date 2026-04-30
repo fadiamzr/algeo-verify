@@ -3,6 +3,7 @@ Algeo Verify — API Logging Middleware
 Automatically logs every API request to the APILog table.
 """
 
+import logging
 from datetime import datetime, timezone
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -33,6 +34,6 @@ class APILoggingMiddleware(BaseHTTPMiddleware):
             db.add(log)
             db.commit()
         except Exception as e:
-            print(f"[LOG] Failed to log request: {e}")
+            logging.warning(f"Failed to log request: {e}")
 
         return response

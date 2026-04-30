@@ -17,6 +17,7 @@ Usage::
 from __future__ import annotations
 
 import json
+import logging
 import re
 from typing import Optional
 
@@ -96,7 +97,7 @@ def preprocess_address(raw_address: str) -> Optional[dict]:
 
     settings = get_settings()
     if not settings.GEMINI_API_KEY:
-        print("[AI] GEMINI_API_KEY is not set — skipping AI preprocessing")
+        logging.info("GEMINI_API_KEY is not set — skipping AI preprocessing")
         return None
 
     try:
@@ -113,20 +114,20 @@ def preprocess_address(raw_address: str) -> Optional[dict]:
             "postal_code", "landmark", "reconstructed_address",
         }
         if not isinstance(result, dict) or not expected_keys.intersection(result.keys()):
-            print(f"[AI] Unexpected response structure: {raw_text[:200]}")
+            logging.warning(f"Unexpected AI response structure: {raw_text[:200]}")
             return None
 
-        print(f"[AI] Preprocessed address → wilaya={result.get('wilaya')!r}, "
+        logging.info(f"Preprocessed address → wilaya={result.get('wilaya')!r}, "
               f"commune={result.get('commune')!r}")
         return result
 
     except json.JSONDecodeError as e:
-        print(f"[AI] JSON parse error from Gemini response: {e}")
+        logging.warning(f"JSON parse error from Gemini response: {e}")
         return None
 
     except Exception as e:
         # Catch API errors, rate limits, network issues — never let this crash
-        print(f"[AI] preprocess_address failed: {type(e).__name__}: {e}")
+        logging.error(f"preprocess_address failed: {type(e).__name__}: {e}")
         return None
 
 
@@ -152,12 +153,15 @@ def build_clean_address(ai_result: dict) -> str:
     commune = ai_result.get("commune")
     wilaya = ai_result.get("wilaya")
     postal_code = ai_result.get("postal_code")
+    landmark = ai_result.get("landmark")
     reconstructed = ai_result.get("reconstructed_address", "")
 
     parts: list[str] = []
 
     if street:
         parts.append(street)
+    if landmark:
+        parts.append(landmark)
     if commune:
         parts.append(commune)
 

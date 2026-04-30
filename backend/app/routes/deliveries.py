@@ -19,6 +19,7 @@ GET    /deliveries/{id}/history       verification history
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from typing import List, Optional
 
@@ -89,7 +90,7 @@ def _get_or_create_agent(user: User, session: Session) -> DeliveryAgent:
     ).first()
 
     if not agent:
-        print(f"[INFO] Auto-creating DeliveryAgent for user {user.id} ({user.email})")
+        logging.info(f"Auto-creating DeliveryAgent for user {user.id} ({user.email})")
         agent = DeliveryAgent(user_id=user.id)
         session.add(agent)
         session.commit()
@@ -151,7 +152,7 @@ def get_deliveries(
     try:
         agent = _get_or_create_agent(user, session)
 
-        query = select(Delivery).where(Delivery.delivery_agent_id == agent.id)
+        query = select(Delivery).where(Delivery.delivery_agent_id == agent.id).order_by(Delivery.id.desc())
 
         # Optional filters
         if status:
@@ -173,7 +174,7 @@ def get_deliveries(
         raise
 
     except Exception as e:
-        print(f"[ERROR] GET /deliveries/ — {e}")
+        logging.error(f"GET /deliveries/ — {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch deliveries",
@@ -207,6 +208,8 @@ def create_delivery(
             status=body.status,
             scheduled_date=body.scheduled_date,
             delivery_agent_id=agent.id,
+            customer_name=body.customer_name,
+            customer_phone=body.customer_phone,
         )
         session.add(delivery)
         session.commit()
@@ -216,7 +219,7 @@ def create_delivery(
         raise
 
     except Exception as e:
-        print(f"[ERROR] POST /deliveries/ — {e}")
+        logging.error(f"POST /deliveries/ — {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create delivery",
@@ -251,7 +254,7 @@ def create_delivery(
         session.refresh(delivery)
 
     except Exception as e:
-        print(f"[WARN] Address processing failed for delivery {delivery.id}: {e}")
+        logging.warning(f"Address processing failed for delivery {delivery.id}: {e}")
         # Don't fail the delivery creation — address processing is best-effort
 
     return delivery
@@ -276,7 +279,7 @@ def get_delivery(
         raise
 
     except Exception as e:
-        print(f"[ERROR] GET /deliveries/{delivery_id} — {e}")
+        logging.error(f"GET /deliveries/{delivery_id} — {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch delivery",
@@ -314,7 +317,7 @@ def update_delivery_status(
         raise
 
     except Exception as e:
-        print(f"[ERROR] PATCH /deliveries/{delivery_id}/status — {e}")
+        logging.error(f"PATCH /deliveries/{delivery_id}/status — {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update delivery status",
@@ -361,7 +364,7 @@ def verify_delivery(
         raise
 
     except Exception as e:
-        print(f"[ERROR] POST /deliveries/{delivery_id}/verify — {e}")
+        logging.error(f"POST /deliveries/{delivery_id}/verify — {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Address verification failed",
@@ -423,7 +426,7 @@ def submit_feedback(
         raise
 
     except Exception as e:
-        print(f"[ERROR] POST /deliveries/{delivery_id}/feedback — {e}")
+        logging.error(f"POST /deliveries/{delivery_id}/feedback — {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to save feedback",
@@ -463,8 +466,49 @@ def get_delivery_history(
         raise
 
     except Exception as e:
-        print(f"[ERROR] GET /deliveries/{delivery_id}/history — {e}")
+        logging.error(f"GET /deliveries/{delivery_id}/history — {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch history",
+        )
+
+# ---------------------------------------------------------------------------
+# H)  PATCH /deliveries/{id}/verification  — save verification
+# ---------------------------------------------------------------------------
+class VerificationSaveRequest(BaseModel):
+    confidence_score: float
+    normalized_address: str
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+
+@router.patch("/{delivery_id}/verification")
+def save_verification(
+    delivery_id: int,
+    body: VerificationSaveRequest,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    try:
+        agent = _get_or_create_agent(user, session)
+        delivery = _get_delivery_or_404(delivery_id, agent, session)
+
+        delivery.confidence_score = body.confidence_score
+        delivery.normalized_address = body.normalized_address
+        if body.latitude is not None:
+            delivery.latitude = body.latitude
+        if body.longitude is not None:
+            delivery.longitude = body.longitude
+
+        session.add(delivery)
+        session.commit()
+        session.refresh(delivery)
+
+        return {"status": "success"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"PATCH /deliveries/{delivery_id}/verification — {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to save verification",
         )

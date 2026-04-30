@@ -17,6 +17,7 @@ Usage (within a FastAPI route)::
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
@@ -128,9 +129,9 @@ def verifyAddress(raw_address: str, db: Session) -> Dict[str, Any]:
                 if clean:
                     address_for_normalization = clean
                     ai_was_used = True
-                    print(f"[AI] Using AI-cleaned address: {clean!r}")
+                    logging.info(f"Using AI-cleaned address: {clean!r}")
         except Exception as e:
-            print(f"[AI] Preprocessor error (continuing without AI): {e}")
+            logging.warning(f"AI preprocessor error (continuing without AI): {e}")
 
     # ── Step 1: Normalize ─────────────────────────────────────────────
     normalized_address = normalize(address_for_normalization)

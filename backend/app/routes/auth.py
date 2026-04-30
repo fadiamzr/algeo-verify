@@ -2,28 +2,41 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlmodel import Session, select
 from jose import jwt, JWTError
+from pydantic import BaseModel
 
 from app.database import get_session
 from app.models.user import User
 from app.core.security import verify_password, create_access_token, SECRET_KEY, ALGORITHM
 
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
 router = APIRouter()
 security = HTTPBearer()
 
 
-# 🔑 LOGIN
+# --- LOGIN ---
 @router.post("/auth/login")
-def login(email: str, password: str, session: Session = Depends(get_session)):
-    user = session.exec(select(User).where(User.email == email)).first()
-    print(user)
-    if not user or not verify_password(password, user.password_hash):
+def login(data: LoginRequest, session: Session = Depends(get_session)):
+    user = session.exec(
+        select(User).where(User.email == data.email)
+    ).first()
+
+    if not user or not verify_password(data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     token = create_access_token({"sub": str(user.id)})
-    return {"access_token": token}
+    return {
+        "access_token": token,
+        "user_id": user.id,
+        "name": user.name,
+        "email": user.email,
+        "role": user.role,
+    }
 
 
-# 🔐 VERIFY TOKEN
+# --- VERIFY TOKEN ---
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     session: Session = Depends(get_session)
@@ -45,7 +58,7 @@ def get_current_user(
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
     
-# 👤 CURRENT USER
+# --- CURRENT USER ---
 @router.get("/auth/me")
 def get_me(user=Depends(get_current_user)):
     return {

@@ -1,15 +1,22 @@
-from fastapi import FastAPI, Depends, HTTPException
+import logging
+
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlmodel import Session
+
 from app.config import get_settings
 from app.database import create_db_and_tables, get_session
 from app.models import *  # noqa: F401, F403
+from app.middleware import APILoggingMiddleware
 
 from app.routes import auth
 from app.routes import admin
 from app.routes import deliveries
-from app.routes.import_deliveries import router_import
+from app.routes.sync import router_sync
+from app.routes.verifications import router_verifications
+
+logger = logging.getLogger(__name__)
 
 _settings = get_settings()
 
@@ -19,30 +26,37 @@ app = FastAPI(
     version="0.1.0",
 )
 
+# --- Routers ---
 app.include_router(auth.router)
 app.include_router(admin.router)
-app.include_router(router_import)
 app.include_router(deliveries.router)
+app.include_router(router_sync)
+app.include_router(router_verifications)
 
+# --- Middleware (order matters: last added = outermost) ---
+# 1. Logging middleware (inner — runs after CORS is handled)
+app.add_middleware(APILoggingMiddleware)
+
+# 2. CORS middleware (outer — must be outermost to handle OPTIONS preflight)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_settings.CORS_ORIGINS,
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-from app.middleware import APILoggingMiddleware
-app.add_middleware(APILoggingMiddleware)
-
 create_db_and_tables()
+
 
 class VerifyRequest(BaseModel):
     raw_address: str
 
+
 @app.get("/")
 def root():
     return {"message": "Algeo-Verify backend is running"}
+
 
 @app.post("/verify")
 def verify_address(
@@ -52,29 +66,10 @@ def verify_address(
     from app.services.verification import verifyAddress
     return verifyAddress(body.raw_address, db)
 
-@app.post("/deliveries/{delivery_id}/verify")
-def verify_delivery_address(
-    delivery_id: int,
-    db: Session = Depends(get_session),
-):
-    from app.models import Delivery
-    from app.services.verification import verifyAddress
-
-    delivery = db.get(Delivery, delivery_id)
-    if not delivery:
-        raise HTTPException(status_code=404, detail=f"Delivery {delivery_id} not found")
-
-    address = getattr(delivery, "address", getattr(delivery, "raw_address", None))
-    if not address:
-        raise HTTPException(status_code=400, detail="Delivery does not have a raw_address or address field")
-
-    result = verifyAddress(address, db)
-    result["deliveryId"] = delivery_id
-    return result
 
 @app.on_event("startup")
 def run_seed():
-     import sys, os
-     sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-     from seed import seed
-     seed()
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    from seed import seed
+    seed()

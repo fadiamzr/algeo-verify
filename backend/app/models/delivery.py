@@ -13,6 +13,10 @@ class Delivery(SQLModel, table=True):
     status: str
     scheduled_date: datetime
 
+    # ── Customer info ─────────────────────────────────────────────────
+    customer_name: Optional[str] = Field(default=None)
+    customer_phone: Optional[str] = Field(default=None)
+
     # ── Address & geocoding fields ────────────────────────────────────
     address: Optional[str] = Field(default=None)
     normalized_address: Optional[str] = Field(default=None)

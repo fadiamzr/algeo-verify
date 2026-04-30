@@ -15,6 +15,7 @@ Usage::
 
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 import httpx
@@ -64,13 +65,13 @@ def _call_nominatim(query: str) -> Optional[dict]:
         return None
 
     except httpx.HTTPStatusError as e:
-        print(f"[GEO] HTTP error geocoding {query!r}: {e.response.status_code}")
+        logging.warning(f"HTTP error geocoding {query!r}: {e.response.status_code}")
         return None
     except httpx.RequestError as e:
-        print(f"[GEO] Network error geocoding {query!r}: {e}")
+        logging.warning(f"Network error geocoding {query!r}: {e}")
         return None
     except Exception as e:
-        print(f"[GEO] Unexpected error geocoding {query!r}: {type(e).__name__}: {e}")
+        logging.error(f"Unexpected error geocoding {query!r}: {type(e).__name__}: {e}")
         return None
 
 
@@ -173,7 +174,7 @@ def geocode_address(
     result = _call_nominatim(full_query)
     if result:
         extracted = _extract_result(result)
-        print(f"[GEO] Geocoded {address!r} -> "
+        logging.info(f"Geocoded {address!r} -> "
               f"({extracted['latitude']}, {extracted['longitude']}) "
               f"[{extracted['status']}]")
         return extracted
@@ -182,15 +183,15 @@ def geocode_address(
     if commune or wilaya:
         fallback_parts = [p for p in [commune, wilaya, "Algeria"] if p]
         fallback_query = ", ".join(fallback_parts)
-        print(f"[GEO] Full query failed; retrying with fallback: {fallback_query!r}")
+        logging.info(f"Full query failed; retrying with fallback: {fallback_query!r}")
 
         result = _call_nominatim(fallback_query)
         if result:
             extracted = _extract_result(result)
             extracted["status"] = "approximate"
-            print(f"[GEO] Fallback geocoded -> "
+            logging.info(f"Fallback geocoded -> "
                   f"({extracted['latitude']}, {extracted['longitude']}) [approximate]")
             return extracted
 
-    print(f"[GEO] All geocoding attempts failed for: {address!r}")
+    logging.warning(f"All geocoding attempts failed for: {address!r}")
     return _FAILED

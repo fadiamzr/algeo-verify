@@ -1,5 +1,8 @@
 import csv
 import io
+import logging
+import secrets
+import string
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlmodel import Session, select
 from typing import Optional
@@ -98,6 +101,8 @@ def list_verifications(
     elif filter == "risky":
         query = query.where(AddressVerification.confidence_score < 0.4)
 
+    query = query.order_by(AddressVerification.id.desc())
+
     total = len(session.exec(query).all())
     offset = (page - 1) * page_size
     items = session.exec(query.offset(offset).limit(page_size)).all()
@@ -128,7 +133,7 @@ def list_deliveries(
     session: Session = Depends(get_session),
     _: User = Depends(require_admin),
 ):
-    query = select(Delivery)
+    query = select(Delivery).order_by(Delivery.id.desc())
     total = len(session.exec(query).all())
     offset = (page - 1) * page_size
     items = session.exec(query.offset(offset).limit(page_size)).all()
@@ -148,6 +153,14 @@ async def import_deliveries_csv(
     text = content.decode("utf-8-sig", errors="ignore")
     reader = csv.DictReader(io.StringIO(text))
 
+    # If no delivery_agent_id column in CSV, auto-assign to the first agent
+    default_agent = session.exec(select(DeliveryAgent)).first()
+    if not default_agent:
+        raise HTTPException(
+            status_code=400,
+            detail="No delivery agents exist. Create at least one agent first.",
+        )
+
     created = 0
     errors = []
 
@@ -157,9 +170,8 @@ async def import_deliveries_csv(
             scheduled_date_str = row.get("scheduled_date", "").strip()
             delivery_agent_id = row.get("delivery_agent_id", "").strip()
 
-            if not delivery_agent_id:
-                errors.append(f"Row {i}: missing delivery_agent_id")
-                continue
+            # Use provided agent ID or fall back to the default
+            agent_id = int(delivery_agent_id) if delivery_agent_id else default_agent.id
 
             from datetime import datetime
             if scheduled_date_str:
@@ -173,8 +185,10 @@ async def import_deliveries_csv(
             delivery = Delivery(
                 status=status,
                 scheduled_date=scheduled_date,
-                delivery_agent_id=int(delivery_agent_id),
+                delivery_agent_id=agent_id,
                 address=row.get("address", "").strip() or None,
+                customer_name=row.get("customer_name", "").strip() or None,
+                customer_phone=row.get("customer_phone", "").strip() or None,
             )
             session.add(delivery)
             session.commit()
@@ -200,7 +214,7 @@ async def import_deliveries_csv(
                     session.add(delivery)
                     session.commit()
                 except Exception as e:
-                    print(f"[WARN] Pipeline failed for row {i}: {e}")
+                    logging.warning(f"Pipeline failed for row {i}: {e}")
 
             created += 1
 
@@ -299,6 +313,31 @@ def get_delivery(
     return d
 
 
+class DeliveryAssignRequest(BaseModel):
+    agent_id: int
+
+@router.patch("/deliveries/{delivery_id}/assign")
+def assign_delivery(
+    delivery_id: int,
+    body: DeliveryAssignRequest,
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    delivery = session.get(Delivery, delivery_id)
+    if not delivery:
+        raise HTTPException(status_code=404, detail="Delivery not found")
+    
+    agent = session.get(DeliveryAgent, body.agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+        
+    delivery.delivery_agent_id = agent.id
+    session.add(delivery)
+    session.commit()
+    session.refresh(delivery)
+    return delivery
+
+
 # -----------------------------------------
 # Agents CRUD + Import
 # -----------------------------------------
@@ -372,12 +411,11 @@ async def import_agents_csv(
 
     return {"message": "Import complete", "created": created, "errors": errors}
 
-import secrets
-import string
-
 class AgentRegisterRequest(BaseModel):
     name: str
     email: str
+    password: Optional[str] = None
+
 
 @router.post("/agents/register")
 def register_agent(
@@ -386,31 +424,40 @@ def register_agent(
     _: User = Depends(require_admin),
 ):
     from app.core.security import hash_password
+
     existing = session.exec(select(User).where(User.email == body.email)).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
-    generated_password = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(10))
+
+    # Auto-generate a secure password if none provided
+    raw_password = body.password or ''.join(
+        secrets.choice(string.ascii_letters + string.digits) for _ in range(12)
+    )
+
     user = User(
         name=body.name,
         email=body.email,
-        password_hash=hash_password(generated_password),
+        password_hash=hash_password(raw_password),
         role=UserRole.delivery_agent,
     )
     session.add(user)
     session.commit()
     session.refresh(user)
+
     agent = DeliveryAgent(user_id=user.id)
     session.add(agent)
     session.commit()
     session.refresh(agent)
+
     return {
         "id": agent.id,
         "user_id": user.id,
         "name": user.name,
         "email": user.email,
         "company_id": agent.company_id,
-        "generated_password": generated_password,
+        "generated_password": raw_password,
     }
+
 
 @router.post("/agents")
 def create_agent(
@@ -431,38 +478,6 @@ def create_agent(
     session.commit()
     session.refresh(agent)
     return agent
-
-from pydantic import BaseModel
-
-class AgentRegisterRequest(BaseModel):
-    name: str
-    email: str
-    password: str
-
-@router.post("/agents/register")
-def register_agent(
-    body: AgentRegisterRequest,
-    session: Session = Depends(get_session),
-    _: User = Depends(require_admin),
-):
-    from app.core.security import hash_password
-    existing = session.exec(select(User).where(User.email == body.email)).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Email already registered")
-    user = User(
-        name=body.name,
-        email=body.email,
-        password_hash=hash_password(body.password),
-        role=UserRole.delivery_agent,
-    )
-    session.add(user)
-    session.commit()
-    session.refresh(user)
-    agent = DeliveryAgent(user_id=user.id)
-    session.add(agent)
-    session.commit()
-    session.refresh(agent)
-    return {"id": agent.id, "user_id": user.id, "name": user.name, "email": user.email, "company_id": agent.company_id}
 @router.get("/agents/{agent_id}")
 def get_agent(
     agent_id: int,

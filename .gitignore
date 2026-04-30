@@ -1,1 +1,18 @@
+# Database files
 *.db
+
+# JVM crash/replay logs
+hs_err_pid*.log
+replay_pid*.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual environments
+.venv/
+venv/
+
+# Environment variables
+.env

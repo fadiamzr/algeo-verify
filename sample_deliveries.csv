@@ -1,0 +1,21 @@
+customer_name,customer_phone,address,status,scheduled_date
+Karim Bouzid,0555123456,"123 rue Didouche Mourad, Constantine 25000",pending,2026-05-01
+Amina Mansouri,0666987654,"حي 500 مسكن، باب الواد، الجزائر 16001",pending,2026-05-01
+Youssef Taleb,0777112233,"Cité 1000 logements, Bir El Djir, Oran 31000",pending,2026-05-01
+Nadia Khelifi,0550445566,"en face lycée Lotfi, hai es salam, Batna 05000",in_progress,2026-05-01
+Samir Benali,0661223344,"Rue principale, Boufarik, Blida 09001",pending,2026-05-02
+Fatima Zohra Hadj,0555678901,"Cité 200 logements, Sétif 19000",pending,2026-05-02
+Mohamed Amine Cherif,0770334455,"12 boulevard Emir Abdelkader, Tlemcen 13000",pending,2026-05-02
+Leila Boudiaf,0660112299,"Hai El Moustakbal, Biskra 07000",in_progress,2026-05-02
+Rachid Mebarki,0551998877,"Cité des 600 logements, Annaba 23000",pending,2026-05-03
+Houria Slimani,0773456789,"Quartier Sidi Mabrouk, Constantine 25000",pending,2026-05-03
+Abdelkader Ferhat,0669876543,"Avenue 1er Novembre, Médéa 26000",pending,2026-05-03
+Samia Boukhalfa,0554321098,"Rue des Frères Bouadou, Tizi Ouzou 15000",in_progress,2026-05-03
+Mourad Benaissa,0772233445,"Cité Zhun, Djelfa 17000",pending,2026-05-04
+Karima Djebbar,0668877665,"Place du 1er Novembre, M'sila 28000",pending,2026-05-04
+Ibrahim Lounis,0557766554,"Hai El Badr, Bejaia 06000",pending,2026-05-04
+Amel Rahmani,0774455667,"Cité AADL, Sidi Bel Abbes 22000",in_progress,2026-05-04
+Hakim Bouaziz,0665544332,"Quartier El Kods, Chlef 02000",pending,2026-05-05
+Yasmine Mokrani,0558899001,"Cité Djamel, Skikda 21000",pending,2026-05-05
+Djamel Ould Ali,0771122334,"Boulevard de l'ALN, Mostaganem 27000",pending,2026-05-05
+Soumia Belkacem,0662233445,"حي الأمير عبد القادر، غرداية 47000",pending,2026-05-05
