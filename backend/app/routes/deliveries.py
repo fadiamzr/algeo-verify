@@ -235,6 +235,9 @@ def create_delivery(
         result = verifyAddress(delivery.address, session)
         delivery.normalized_address = result.get("normalizedAddress")
         delivery.confidence_score = result.get("confidenceScore")
+        delivery.match_details = result.get("matchDetails")
+        delivery.detected_entities = result.get("detectedEntities")
+        delivery.risk_flags = result.get("riskFlags")
         delivery.ai_preprocessed = result.get("aiPreprocessed", False)
 
         # Geocode if enabled and we have a normalised address to work with
@@ -480,6 +483,9 @@ class VerificationSaveRequest(BaseModel):
     normalized_address: str
     latitude: Optional[float] = None
     longitude: Optional[float] = None
+    match_details: Optional[str] = None
+    detected_entities: Optional[dict] = None
+    risk_flags: Optional[list] = None
 
 @router.patch("/{delivery_id}/verification")
 def save_verification(
@@ -498,6 +504,12 @@ def save_verification(
             delivery.latitude = body.latitude
         if body.longitude is not None:
             delivery.longitude = body.longitude
+        if body.match_details is not None:
+            delivery.match_details = body.match_details
+        if body.detected_entities is not None:
+            delivery.detected_entities = body.detected_entities
+        if body.risk_flags is not None:
+            delivery.risk_flags = body.risk_flags
 
         session.add(delivery)
         session.commit()
