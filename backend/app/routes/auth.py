@@ -19,8 +19,9 @@ security = HTTPBearer()
 # --- LOGIN ---
 @router.post("/auth/login")
 def login(data: LoginRequest, session: Session = Depends(get_session)):
+    # Case-insensitive email comparison
     user = session.exec(
-        select(User).where(User.email == data.email)
+        select(User).where(User.email.ilike(data.email.strip()))
     ).first()
 
     if not user or not verify_password(data.password, user.password_hash):
